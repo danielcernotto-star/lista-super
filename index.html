@@ -223,6 +223,23 @@
   }
   @keyframes toastin{from{opacity:0; transform:translate(-50%,8px);} to{opacity:1; transform:translate(-50%,0);}}
 
+  .modal-overlay{
+    position:fixed; inset:0; z-index:20;
+    background:rgba(10,20,16,0.6);
+    display:flex; align-items:flex-end; justify-content:center;
+    animation:fadein 0.15s ease;
+  }
+  .modal-box{
+    background:var(--board-2); border:1px solid var(--line);
+    border-radius:20px 20px 0 0;
+    padding:22px 20px calc(22px + var(--safe-bottom));
+    width:100%; max-width:560px;
+  }
+  @media (min-width:600px){
+    .modal-overlay{align-items:center;}
+    .modal-box{border-radius:20px;}
+  }
+
   .hidden{display:none !important;}
   .spinner{
     width:16px; height:16px; border-radius:50%;
@@ -270,6 +287,32 @@
     </div>
   </div>
 
+</div>
+
+<!-- Modal de menú (⋮) -->
+<div class="modal-overlay hidden" id="menuModal">
+  <div class="modal-box">
+    <h3 style="margin-bottom:16px;">Opciones</h3>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button class="btn btn-primary" id="menuShareBtn" style="width:100%; justify-content:center;">Compartir lista con alguien</button>
+      <button class="btn btn-danger" id="menuLogoutBtn" style="width:100%; justify-content:center; border:1px solid rgba(226,84,61,0.4);">Cerrar sesión en este dispositivo</button>
+      <button class="btn btn-ghost" id="menuCloseBtn" style="width:100%; justify-content:center;">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para compartir -->
+<div class="modal-overlay hidden" id="shareModal">
+  <div class="modal-box">
+    <h3 style="margin-bottom:6px;">Compartir la lista</h3>
+    <p style="color:var(--chalk-dim); font-size:13px; margin:0 0 14px;">Escribí el mail de la cuenta Microsoft de la persona. Va a poder ver y editar la lista.</p>
+    <label style="font-size:12px; color:var(--chalk-dim); font-family:'IBM Plex Mono', monospace; text-transform:uppercase; letter-spacing:0.06em;">Email de la cuenta Microsoft</label>
+    <input id="shareModalEmail" type="email" placeholder="mari@outlook.com" style="width:100%; margin-top:6px; margin-bottom:14px; background:rgba(0,0,0,0.2); border:1px solid var(--line); color:var(--chalk); padding:11px 12px; border-radius:10px; font-size:15px; font-family:'Work Sans',sans-serif;">
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button class="btn btn-primary" id="shareModalBtn" style="width:100%; justify-content:center;">Compartir acceso</button>
+      <button class="btn btn-ghost" id="shareModalCloseBtn" style="width:100%; justify-content:center;">Cancelar</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -484,23 +527,28 @@
     document.getElementById('skipShare').onclick = () => { localStorage.setItem('ls_sharedDone','1'); showApp(); startPolling(); };
   }
 
+  async function inviteEmail(email, itemId){
+    const res = await graph(`/me/drive/items/${itemId}/invite`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        recipients: [{ email }],
+        message: "Te comparto nuestra lista del súper 🛒",
+        requireSignIn: true,
+        sendInvitation: true,
+        roles: ["write"]
+      })
+    });
+    return res;
+  }
+
   async function doShare(){
     const email = document.getElementById('shareEmail').value.trim();
     if (!email){ showToast("Ingresá un email"); return; }
     const btn = document.getElementById('shareBtn');
     btn.disabled = true; btn.textContent = "Compartiendo…";
     try{
-      const res = await graph(`/me/drive/items/${ownerItemId}/invite`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          recipients: [{ email }],
-          message: "Te comparto nuestra lista del súper 🛒",
-          requireSignIn: true,
-          sendInvitation: true,
-          roles: ["write"]
-        })
-      });
+      const res = await inviteEmail(email, ownerItemId);
       if (res.ok){
         localStorage.setItem('ls_sharedDone','1');
         showToast("Compartido ✓");
@@ -785,10 +833,44 @@
   els.newItemInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addItem(); });
 
   els.menuBtn.addEventListener('click', () => {
+    document.getElementById('menuShareBtn').classList.toggle('hidden', role !== 'owner');
+    document.getElementById('menuModal').classList.remove('hidden');
+  });
+  document.getElementById('menuCloseBtn').addEventListener('click', () => {
+    document.getElementById('menuModal').classList.add('hidden');
+  });
+  document.getElementById('menuLogoutBtn').addEventListener('click', () => {
     const doLogout = confirm("¿Cerrar sesión en este dispositivo?");
     if (doLogout){
       localStorage.clear();
       msalInstance.logoutPopup().catch(()=>location.reload());
+    }
+  });
+  document.getElementById('menuShareBtn').addEventListener('click', () => {
+    document.getElementById('menuModal').classList.add('hidden');
+    document.getElementById('shareModalEmail').value = '';
+    document.getElementById('shareModal').classList.remove('hidden');
+  });
+  document.getElementById('shareModalCloseBtn').addEventListener('click', () => {
+    document.getElementById('shareModal').classList.add('hidden');
+  });
+  document.getElementById('shareModalBtn').addEventListener('click', async () => {
+    const email = document.getElementById('shareModalEmail').value.trim();
+    if (!email){ showToast("Ingresá un email"); return; }
+    const btn = document.getElementById('shareModalBtn');
+    btn.disabled = true; btn.textContent = "Compartiendo…";
+    try{
+      const res = await inviteEmail(email, ownerItemId);
+      if (res.ok){
+        showToast("Compartido con " + email + " ✓");
+        document.getElementById('shareModal').classList.add('hidden');
+      } else {
+        showToast("No se pudo compartir. Revisá el mail.");
+      }
+    }catch(e){
+      showToast("Error al compartir");
+    }finally{
+      btn.disabled = false; btn.textContent = "Compartir acceso";
     }
   });
 
