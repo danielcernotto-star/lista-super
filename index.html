@@ -197,6 +197,29 @@
     display:flex; gap:6px; overflow-x:auto; padding:0 2px 8px; scrollbar-width:none;
   }
   .cats-row::-webkit-scrollbar{display:none;}
+  .favs-row{
+    display:flex; gap:6px; overflow-x:auto; padding:0 2px 8px; scrollbar-width:none;
+  }
+  .favs-row::-webkit-scrollbar{display:none;}
+  .fav-chip{
+    flex-shrink:0; padding:7px 14px; border-radius:999px; font-size:13px;
+    border:1px solid rgba(242,183,5,0.4); color:var(--accent); background:rgba(242,183,5,0.08);
+    font-family:'Work Sans',sans-serif; font-weight:500; cursor:pointer; white-space:nowrap;
+    display:flex; align-items:center; gap:5px;
+  }
+  .fav-chip.in-list{opacity:0.4;}
+  .fav-chip-edit{
+    flex-shrink:0; padding:7px 12px; border-radius:999px; font-size:13px;
+    border:1px dashed var(--line); color:var(--chalk-dim); background:transparent;
+    cursor:pointer; white-space:nowrap;
+  }
+  .fav-edit-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 10px; background:rgba(0,0,0,0.15); border-radius:10px;
+  }
+  .fav-edit-row .fname{font-size:14px;}
+  .fav-edit-row .fcat{font-size:11px; color:var(--chalk-dim); font-family:'IBM Plex Mono',monospace;}
+  .fav-edit-del{background:none; border:none; color:var(--tomato); font-size:16px; cursor:pointer; padding:4px;}
   .cat-chip{
     flex-shrink:0; padding:6px 12px; border-radius:999px; font-size:12px;
     border:1px solid var(--line); color:var(--chalk-dim); background:rgba(0,0,0,0.15);
@@ -280,6 +303,7 @@
   <main class="hidden" id="main"></main>
 
   <div class="addbar hidden" id="addbar">
+    <div class="favs-row" id="favsRow"></div>
     <div class="cats-row" id="catsRow"></div>
     <div class="add-row">
       <input id="newItemInput" type="text" placeholder="Agregar producto…" autocomplete="off">
@@ -287,6 +311,22 @@
     </div>
   </div>
 
+</div>
+
+<!-- Modal para gestionar favoritos -->
+<div class="modal-overlay hidden" id="favModal">
+  <div class="modal-box">
+    <h3 style="margin-bottom:6px;">Favoritos</h3>
+    <p style="color:var(--chalk-dim); font-size:13px; margin:0 0 14px;">Productos de compra frecuente. Tocalos arriba de la lista para sumarlos con un toque.</p>
+    <div id="favEditList" style="display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto; margin-bottom:16px;"></div>
+    <label style="font-size:12px; color:var(--chalk-dim); font-family:'IBM Plex Mono', monospace; text-transform:uppercase; letter-spacing:0.06em;">Nuevo favorito</label>
+    <input id="favNewName" type="text" placeholder="Ej: Pan, Leche, Papel higiénico" style="width:100%; margin-top:6px; margin-bottom:10px; background:rgba(0,0,0,0.2); border:1px solid var(--line); color:var(--chalk); padding:11px 12px; border-radius:10px; font-size:15px; font-family:'Work Sans',sans-serif;">
+    <select id="favNewCat" style="width:100%; margin-bottom:14px; background:rgba(0,0,0,0.2); border:1px solid var(--line); color:var(--chalk); padding:11px 12px; border-radius:10px; font-size:15px; font-family:'Work Sans',sans-serif;"></select>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button class="btn btn-primary" id="favAddBtn" style="width:100%; justify-content:center;">Agregar a favoritos</button>
+      <button class="btn btn-ghost" id="favModalCloseBtn" style="width:100%; justify-content:center;">Cerrar</button>
+    </div>
+  </div>
 </div>
 
 <!-- Modal de menú (⋮) -->
@@ -305,23 +345,30 @@
 <div class="modal-overlay hidden" id="shareModal">
   <div class="modal-box">
     <h3 style="margin-bottom:6px;">Compartir la lista</h3>
-    <p style="color:var(--chalk-dim); font-size:13px; margin:0 0 14px;">Escribí el mail de la cuenta Microsoft de la persona. Va a poder ver y editar la lista.</p>
-    <label style="font-size:12px; color:var(--chalk-dim); font-family:'IBM Plex Mono', monospace; text-transform:uppercase; letter-spacing:0.06em;">Email de la cuenta Microsoft</label>
-    <input id="shareModalEmail" type="email" placeholder="mari@outlook.com" style="width:100%; margin-top:6px; margin-bottom:14px; background:rgba(0,0,0,0.2); border:1px solid var(--line); color:var(--chalk); padding:11px 12px; border-radius:10px; font-size:15px; font-family:'Work Sans',sans-serif;">
-    <div style="display:flex; flex-direction:column; gap:10px;">
-      <button class="btn btn-primary" id="shareModalBtn" style="width:100%; justify-content:center;">Compartir acceso</button>
-      <button class="btn btn-ghost" id="shareModalCloseBtn" style="width:100%; justify-content:center;">Cancelar</button>
+    <p id="shareModalIntro" style="color:var(--chalk-dim); font-size:13px; margin:0 0 14px;">Escribí el mail de la cuenta Microsoft de la persona. Va a poder ver y editar la lista.</p>
+    <div id="shareModalForm">
+      <label style="font-size:12px; color:var(--chalk-dim); font-family:'IBM Plex Mono', monospace; text-transform:uppercase; letter-spacing:0.06em;">Email de la cuenta Microsoft</label>
+      <input id="shareModalEmail" type="email" placeholder="mari@outlook.com" style="width:100%; margin-top:6px; margin-bottom:14px; background:rgba(0,0,0,0.2); border:1px solid var(--line); color:var(--chalk); padding:11px 12px; border-radius:10px; font-size:15px; font-family:'Work Sans',sans-serif;">
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button class="btn btn-primary" id="shareModalBtn" style="width:100%; justify-content:center;">Compartir acceso</button>
+        <button class="btn btn-ghost" id="shareModalCloseBtn" style="width:100%; justify-content:center;">Cancelar</button>
+      </div>
     </div>
+    <div id="shareModalResult" class="hidden"></div>
   </div>
 </div>
 
 <script>
 (() => {
   const CFG = window.APP_CONFIG;
-  const CATEGORIES = ["Almacén","Verdulería","Carnicería","Lácteos","Limpieza","Bebidas","Panadería","Otros"];
+  // El orden de este array define el "recorrido de góndola": la lista
+  // se muestra siempre en este orden, no alfabético. Podés reordenarlo
+  // o renombrar categorías editando este array.
+  const CATEGORIES = ["Verdulería","Carnicería","Almacén","Lácteos","Panadería","Bebidas","Limpieza","Otros"];
   let selectedCategory = "Otros";
   let lastEtag = null;
   let currentItems = [];
+  let currentFavorites = [];
   let saving = false;
   let pendingSave = false;
 
@@ -367,6 +414,7 @@
     newItemInput: document.getElementById('newItemInput'),
     addBtn: document.getElementById('addBtn'),
     menuBtn: document.getElementById('menuBtn'),
+    favsRow: document.getElementById('favsRow'),
   };
 
   function showToast(msg){
@@ -489,7 +537,7 @@
       const createRes = await graph(`/me/drive/root:/${CFG.FOLDER_NAME}/${CFG.FILE_NAME}:/content`, {
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ items: [] })
+        body: JSON.stringify({ items: [], favorites: [] })
       });
       const data = await createRes.json();
       ownerItemId = data.id;
@@ -542,6 +590,40 @@
     return res;
   }
 
+  async function createShareLink(itemId){
+    const res = await graph(`/me/drive/items/${itemId}/createLink`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ type: 'edit', scope: 'anonymous' })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.link ? data.link.webUrl : null;
+  }
+
+  async function copyToClipboard(text){
+    try{
+      await navigator.clipboard.writeText(text);
+      return true;
+    }catch(e){
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand('copy'); ta.remove(); return true; }
+      catch(e2){ ta.remove(); return false; }
+    }
+  }
+
+  function shareLinkResultHtml(link){
+    return `
+      <div class="setup-card" style="margin-top:14px;">
+        <label>Mandale este link por WhatsApp</label>
+        <div style="background:rgba(0,0,0,0.25); border:1px solid var(--line); border-radius:10px; padding:11px 12px; font-size:12px; word-break:break-all; margin:6px 0 12px; font-family:'IBM Plex Mono',monospace; color:var(--chalk-dim);">${link}</div>
+        <p style="font-size:12px; color:var(--chalk-dim); margin:0 0 12px;">La otra persona debe abrir la app (no el link directo) y pegarlo en «Me compartieron la lista».</p>
+        <button class="btn btn-primary" id="copyLinkBtn" style="width:100%; justify-content:center;">Copiar link</button>
+      </div>`;
+  }
+
   async function doShare(){
     const email = document.getElementById('shareEmail').value.trim();
     if (!email){ showToast("Ingresá un email"); return; }
@@ -551,9 +633,22 @@
       const res = await inviteEmail(email, ownerItemId);
       if (res.ok){
         localStorage.setItem('ls_sharedDone','1');
-        showToast("Compartido ✓");
-        showApp();
-        startPolling();
+        const link = await createShareLink(ownerItemId);
+        if (link){
+          els.gateTitle.textContent = "¡Compartido!";
+          els.gateText.textContent = "Un último paso: mandale este link a la otra persona.";
+          els.gateActions.innerHTML = shareLinkResultHtml(link) +
+            `<button class="btn btn-ghost" id="continueAfterShareBtn" style="width:100%; justify-content:center; margin-top:10px;">Continuar a la lista →</button>`;
+          document.getElementById('copyLinkBtn').onclick = async () => {
+            const ok = await copyToClipboard(link);
+            showToast(ok ? "Link copiado ✓" : "No se pudo copiar, seleccionalo a mano");
+          };
+          document.getElementById('continueAfterShareBtn').onclick = () => { showApp(); startPolling(); };
+        } else {
+          showToast("Compartido ✓");
+          showApp();
+          startPolling();
+        }
       } else {
         const err = await res.json().catch(()=>({}));
         showToast("No se pudo compartir. Revisá el mail.");
@@ -595,14 +690,14 @@
   }
 
   function renderManualLinkStep(){
-    els.gateTitle.textContent = "Todavía no encontramos la lista";
-    els.gateText.textContent = "Pedile a quien la creó que use el botón «Compartir» dentro de la app. Si ya lo hizo, esperá un minuto y reintentá, o pegá el link que te llegó por mail.";
+    els.gateTitle.textContent = "Pegá el link que te compartieron";
+    els.gateText.textContent = "Quien creó la lista te tiene que haber pasado un link por WhatsApp (desde el botón «Compartir» de la app). Pegalo acá abajo. No hace falta abrirlo en el navegador, solo pegarlo en este campo.";
     els.gateActions.innerHTML = `
       <div class="setup-card">
-        <label>Link de OneDrive (opcional)</label>
-        <input id="shareLink" type="text" placeholder="https://1drv.ms/...">
+        <label>Link que te compartieron</label>
+        <input id="shareLink" type="text" placeholder="https://1drv.ms/... o https://onedrive.live.com/...">
         <button class="btn btn-primary" id="resolveLinkBtn" style="width:100%; justify-content:center; margin-bottom:8px;">Conectar con este link</button>
-        <button class="btn btn-ghost" id="retryBtn" style="width:100%; justify-content:center;">Reintentar búsqueda</button>
+        <button class="btn btn-ghost" id="retryBtn" style="width:100%; justify-content:center;">Reintentar búsqueda automática</button>
       </div>`;
     document.getElementById('retryBtn').onclick = ensureGuestFile;
     document.getElementById('resolveLinkBtn').onclick = resolveShareLink;
@@ -649,8 +744,10 @@
       if (!res.ok) throw new Error('read failed');
       const data = await res.json();
       currentItems = data.items || [];
+      currentFavorites = data.favorites || [];
       lastEtag = meta.eTag;
       render();
+      renderFavorites();
       setSync('ok', 'Sincronizado');
     }catch(e){
       console.error(e);
@@ -670,11 +767,12 @@
         const remoteRes = await graph(contentPath());
         const remoteData = await remoteRes.json();
         currentItems = mergeItems(remoteData.items || [], currentItems);
+        currentFavorites = mergeById(remoteData.favorites || [], currentFavorites);
       }
       const putRes = await graph(contentPath(), {
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ items: currentItems })
+        body: JSON.stringify({ items: currentItems, favorites: currentFavorites })
       });
       const putData = await putRes.json();
       lastEtag = putData.eTag;
@@ -686,6 +784,13 @@
       saving = false;
       if (pendingSave){ pendingSave = false; saveItems(); }
     }
+  }
+
+  function mergeById(remote, local){
+    const byId = new Map();
+    remote.forEach(it => byId.set(it.id, it));
+    local.forEach(it => byId.set(it.id, it)); // local gana en conflicto directo
+    return Array.from(byId.values());
   }
 
   function mergeItems(remote, local){
@@ -703,7 +808,7 @@
 
   function startPolling(){
     loadItems();
-    setInterval(() => { if (!document.hidden) loadItems(); }, 20000);
+    setInterval(() => { if (!document.hidden) loadItems(); }, 8000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) loadItems(); });
     window.addEventListener('focus', loadItems);
   }
@@ -728,6 +833,88 @@
     });
   }
 
+  // ---------- FAVORITOS ----------
+  function renderFavorites(){
+    const pendingNames = new Set(currentItems.filter(i => !i.checked).map(i => i.name.toLowerCase()));
+    const chips = currentFavorites.map(f => {
+      const inList = pendingNames.has(f.name.toLowerCase());
+      return `<button class="fav-chip${inList?' in-list':''}" data-id="${f.id}">★ ${escapeHtml(f.name)}</button>`;
+    }).join('');
+    els.favsRow.innerHTML = chips + `<button class="fav-chip-edit" id="favEditOpenBtn">✏️ Favoritos</button>`;
+    els.favsRow.querySelectorAll('.fav-chip').forEach(chip => {
+      chip.onclick = () => addFavoriteToList(chip.dataset.id);
+    });
+    document.getElementById('favEditOpenBtn').onclick = openFavModal;
+  }
+
+  function addFavoriteToList(favId){
+    const fav = currentFavorites.find(f => f.id === favId);
+    if (!fav) return;
+    const already = currentItems.some(i => !i.checked && i.name.toLowerCase() === fav.name.toLowerCase());
+    if (already){ showToast(fav.name + " ya está en la lista"); return; }
+    currentItems.unshift({
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
+      name: fav.name,
+      category: fav.category || 'Otros',
+      checked: false,
+      addedBy: account.name || account.username,
+      addedAt: new Date().toISOString()
+    });
+    render();
+    renderFavorites();
+    saveItems();
+    showToast(fav.name + " agregado ✓");
+  }
+
+  function openFavModal(){
+    const sel = document.getElementById('favNewCat');
+    sel.innerHTML = CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+    renderFavEditList();
+    document.getElementById('favModal').classList.remove('hidden');
+  }
+
+  function renderFavEditList(){
+    const list = document.getElementById('favEditList');
+    if (currentFavorites.length === 0){
+      list.innerHTML = `<div style="color:var(--chalk-dim); font-size:13px;">Todavía no agregaste favoritos.</div>`;
+      return;
+    }
+    list.innerHTML = currentFavorites.map(f => `
+      <div class="fav-edit-row" data-id="${f.id}">
+        <div>
+          <div class="fname">${escapeHtml(f.name)}</div>
+          <div class="fcat">${escapeHtml(f.category || 'Otros')}</div>
+        </div>
+        <button class="fav-edit-del" data-id="${f.id}">✕</button>
+      </div>`).join('');
+    list.querySelectorAll('.fav-edit-del').forEach(btn => {
+      btn.onclick = () => deleteFavorite(btn.dataset.id);
+    });
+  }
+
+  function deleteFavorite(id){
+    currentFavorites = currentFavorites.filter(f => f.id !== id);
+    renderFavEditList();
+    renderFavorites();
+    saveItems();
+  }
+
+  function addNewFavorite(){
+    const name = document.getElementById('favNewName').value.trim();
+    const category = document.getElementById('favNewCat').value;
+    if (!name){ showToast("Escribí un nombre"); return; }
+    currentFavorites.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
+      name,
+      category
+    });
+    document.getElementById('favNewName').value = '';
+    renderFavEditList();
+    renderFavorites();
+    saveItems();
+    showToast("Favorito agregado ✓");
+  }
+
   function render(){
     const pending = currentItems.filter(i => !i.checked);
     const done = currentItems.filter(i => i.checked);
@@ -747,7 +934,9 @@
     if (pending.length === 0){
       html += `<div class="empty-state"><span class="mark">✅</span>¡Compraron todo! Buen trabajo.</div>`;
     } else {
-      Object.keys(groups).forEach(cat => {
+      const orderedCats = [...CATEGORIES, ...Object.keys(groups).filter(c => !CATEGORIES.includes(c))];
+      orderedCats.forEach(cat => {
+        if (!groups[cat]) return;
         html += `<div class="cat-group"><div class="cat-title">${cat}</div>`;
         groups[cat].forEach(it => { html += itemRowHtml(it); });
         html += `</div>`;
@@ -798,18 +987,21 @@
     it.checked = !it.checked;
     if (it.checked){ it.checkedAt = new Date().toISOString(); it.checkedBy = account.name || account.username; }
     render();
+    renderFavorites();
     saveItems();
   }
 
   function deleteItem(id){
     currentItems = currentItems.filter(i => i.id !== id);
     render();
+    renderFavorites();
     saveItems();
   }
 
   function clearDone(){
     currentItems = currentItems.filter(i => !i.checked);
     render();
+    renderFavorites();
     saveItems();
   }
 
@@ -826,6 +1018,7 @@
     });
     els.newItemInput.value = '';
     render();
+    renderFavorites();
     saveItems();
   }
 
@@ -849,6 +1042,9 @@
   document.getElementById('menuShareBtn').addEventListener('click', () => {
     document.getElementById('menuModal').classList.add('hidden');
     document.getElementById('shareModalEmail').value = '';
+    document.getElementById('shareModalForm').classList.remove('hidden');
+    document.getElementById('shareModalIntro').classList.remove('hidden');
+    document.getElementById('shareModalResult').classList.add('hidden');
     document.getElementById('shareModal').classList.remove('hidden');
   });
   document.getElementById('shareModalCloseBtn').addEventListener('click', () => {
@@ -862,8 +1058,28 @@
     try{
       const res = await inviteEmail(email, ownerItemId);
       if (res.ok){
-        showToast("Compartido con " + email + " ✓");
-        document.getElementById('shareModal').classList.add('hidden');
+        const link = await createShareLink(ownerItemId);
+        document.getElementById('shareModalForm').classList.add('hidden');
+        document.getElementById('shareModalIntro').classList.add('hidden');
+        const resultEl = document.getElementById('shareModalResult');
+        if (link){
+          resultEl.innerHTML = shareLinkResultHtml(link) +
+            `<button class="btn btn-ghost" id="shareResultCloseBtn" style="width:100%; justify-content:center; margin-top:10px;">Cerrar</button>`;
+          document.getElementById('copyLinkBtn').onclick = async () => {
+            const ok = await copyToClipboard(link);
+            showToast(ok ? "Link copiado ✓" : "No se pudo copiar, seleccionalo a mano");
+          };
+          document.getElementById('shareResultCloseBtn').onclick = () => {
+            document.getElementById('shareModal').classList.add('hidden');
+          };
+        } else {
+          resultEl.innerHTML = `<p>Se compartió con ${email}, pero no pudimos generar el link para copiar. Buscá el mail de invitación que le llegó.</p>
+            <button class="btn btn-ghost" id="shareResultCloseBtn" style="width:100%; justify-content:center; margin-top:10px;">Cerrar</button>`;
+          document.getElementById('shareResultCloseBtn').onclick = () => {
+            document.getElementById('shareModal').classList.add('hidden');
+          };
+        }
+        resultEl.classList.remove('hidden');
       } else {
         showToast("No se pudo compartir. Revisá el mail.");
       }
@@ -873,6 +1089,11 @@
       btn.disabled = false; btn.textContent = "Compartir acceso";
     }
   });
+
+  document.getElementById('favModalCloseBtn').addEventListener('click', () => {
+    document.getElementById('favModal').classList.add('hidden');
+  });
+  document.getElementById('favAddBtn').addEventListener('click', addNewFavorite);
 
   // Registrar service worker
   if ('serviceWorker' in navigator){
