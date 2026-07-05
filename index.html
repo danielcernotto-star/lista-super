@@ -17,7 +17,9 @@
   window.APP_CONFIG = {
     CLIENT_ID: "746f62ec-3d96-4603-8b89-2284ed4e9321",   // Application (client) ID de tu app registrada en Entra
     FOLDER_NAME: "ListaSuperFamiliar",     // nombre de la carpeta en OneDrive donde vive el archivo
-    FILE_NAME: "lista.json"
+    FILE_NAME: "lista.json",
+    VERSION: "2.1",
+    RELEASE_DATE: "05/07/2026"
   };
 </script>
 <!-- =========================================================== -->
@@ -79,6 +81,7 @@
   header .brand{display:flex; flex-direction:column; gap:2px;}
   header .brand h1{font-size:26px; letter-spacing:0.2px;}
   header .brand .sub{font-size:12px; color:var(--chalk-dim); font-family:'IBM Plex Mono', monospace; text-transform:uppercase; letter-spacing:0.08em;}
+  header .brand .version{font-size:10px; color:rgba(244,239,225,0.4); font-family:'IBM Plex Mono', monospace; letter-spacing:0.04em;}
   .who{
     display:flex; align-items:center; gap:8px;
     font-size:13px; color:var(--chalk-dim);
@@ -187,6 +190,17 @@
   .done-header .cat-title{margin:0;}
   .clear-btn{font-size:11px; color:var(--tomato); font-family:'IBM Plex Mono',monospace; background:none; border:none; cursor:pointer; text-transform:uppercase;}
 
+  /* ---------- TABS (Para comprar / En casa) ---------- */
+  .tabs-row{
+    display:flex; gap:8px; margin:0 20px 14px;
+  }
+  .tab-btn{
+    flex:1; padding:11px 10px; border-radius:12px; text-align:center;
+    border:1px solid var(--line); background:rgba(0,0,0,0.15); color:var(--chalk-dim);
+    font-family:'Work Sans',sans-serif; font-weight:600; font-size:14px; cursor:pointer;
+  }
+  .tab-btn.active{background:var(--accent); color:#1B3A2F; border-color:var(--accent);}
+
   /* ---------- ADD BAR (fijo abajo, alcance del pulgar) ---------- */
   .addbar{
     position:sticky; bottom:0; z-index:2;
@@ -197,29 +211,6 @@
     display:flex; gap:6px; overflow-x:auto; padding:0 2px 8px; scrollbar-width:none;
   }
   .cats-row::-webkit-scrollbar{display:none;}
-  .favs-row{
-    display:flex; gap:6px; overflow-x:auto; padding:0 2px 8px; scrollbar-width:none;
-  }
-  .favs-row::-webkit-scrollbar{display:none;}
-  .fav-chip{
-    flex-shrink:0; padding:7px 14px; border-radius:999px; font-size:13px;
-    border:1px solid rgba(242,183,5,0.4); color:var(--accent); background:rgba(242,183,5,0.08);
-    font-family:'Work Sans',sans-serif; font-weight:500; cursor:pointer; white-space:nowrap;
-    display:flex; align-items:center; gap:5px;
-  }
-  .fav-chip.in-list{opacity:0.4;}
-  .fav-chip-edit{
-    flex-shrink:0; padding:7px 12px; border-radius:999px; font-size:13px;
-    border:1px dashed var(--line); color:var(--chalk-dim); background:transparent;
-    cursor:pointer; white-space:nowrap;
-  }
-  .fav-edit-row{
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    padding:8px 10px; background:rgba(0,0,0,0.15); border-radius:10px;
-  }
-  .fav-edit-row .fname{font-size:14px;}
-  .fav-edit-row .fcat{font-size:11px; color:var(--chalk-dim); font-family:'IBM Plex Mono',monospace;}
-  .fav-edit-del{background:none; border:none; color:var(--tomato); font-size:16px; cursor:pointer; padding:4px;}
   .cat-chip{
     flex-shrink:0; padding:6px 12px; border-radius:999px; font-size:12px;
     border:1px solid var(--line); color:var(--chalk-dim); background:rgba(0,0,0,0.15);
@@ -279,6 +270,7 @@
     <div class="brand">
       <h1>🛒 Lista del Súper</h1>
       <div class="sub" id="subLabel">sin conectar</div>
+      <div class="version" id="versionLabel"></div>
     </div>
     <div class="who hidden" id="whoBox">
       <div class="avatar" id="avatarEl">D</div>
@@ -290,6 +282,11 @@
   <div class="sync-strip hidden" id="syncStrip">
     <span class="dot" id="syncDot"></span>
     <span id="syncText">Sincronizado</span>
+  </div>
+
+  <div class="tabs-row hidden" id="tabsRow">
+    <button class="tab-btn active" id="tabComprar" data-view="comprar">Para comprar</button>
+    <button class="tab-btn" id="tabCasa" data-view="casa">En casa</button>
   </div>
 
   <!-- GATE: login / configuración inicial -->
@@ -304,7 +301,6 @@
   <main class="hidden" id="main"></main>
 
   <div class="addbar hidden" id="addbar">
-    <div class="favs-row" id="favsRow"></div>
     <div class="cats-row" id="catsRow"></div>
     <div class="add-row">
       <input id="newItemInput" type="text" placeholder="Agregar producto…" autocomplete="off">
@@ -312,22 +308,6 @@
     </div>
   </div>
 
-</div>
-
-<!-- Modal para gestionar favoritos -->
-<div class="modal-overlay hidden" id="favModal">
-  <div class="modal-box">
-    <h3 style="margin-bottom:6px;">Favoritos</h3>
-    <p style="color:var(--chalk-dim); font-size:13px; margin:0 0 14px;">Productos de compra frecuente. Tocalos arriba de la lista para sumarlos con un toque.</p>
-    <div id="favEditList" style="display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto; margin-bottom:16px;"></div>
-    <label style="font-size:12px; color:var(--chalk-dim); font-family:'IBM Plex Mono', monospace; text-transform:uppercase; letter-spacing:0.06em;">Nuevo favorito</label>
-    <input id="favNewName" type="text" placeholder="Ej: Pan, Leche, Papel higiénico" style="width:100%; margin-top:6px; margin-bottom:10px; background:rgba(0,0,0,0.2); border:1px solid var(--line); color:var(--chalk); padding:11px 12px; border-radius:10px; font-size:15px; font-family:'Work Sans',sans-serif;">
-    <select id="favNewCat" style="width:100%; margin-bottom:14px; background:rgba(0,0,0,0.2); border:1px solid var(--line); color:var(--chalk); padding:11px 12px; border-radius:10px; font-size:15px; font-family:'Work Sans',sans-serif;"></select>
-    <div style="display:flex; flex-direction:column; gap:10px;">
-      <button class="btn btn-primary" id="favAddBtn" style="width:100%; justify-content:center;">Agregar a favoritos</button>
-      <button class="btn btn-ghost" id="favModalCloseBtn" style="width:100%; justify-content:center;">Cerrar</button>
-    </div>
-  </div>
 </div>
 
 <!-- Modal de menú (⋮) -->
@@ -362,14 +342,12 @@
 <script>
 (() => {
   const CFG = window.APP_CONFIG;
-  // El orden de este array define el "recorrido de góndola": la lista
-  // se muestra siempre en este orden, no alfabético. Podés reordenarlo
-  // o renombrar categorías editando este array.
-  const CATEGORIES = ["Verdulería","Carnicería","Almacén","Lácteos","Panadería","Bebidas","Limpieza","Otros"];
+  // Lista de categorías disponibles para etiquetar productos.
+  const CATEGORIES = ["Almacén","Bebidas","Carnicería","Lácteos","Limpieza","Panadería","Verdulería","Otros"];
   let selectedCategory = "Otros";
+  let currentView = 'comprar'; // 'comprar' | 'casa'
   let lastEtag = null;
   let currentItems = [];
-  let currentFavorites = [];
   let saving = false;
   let pendingSave = false;
 
@@ -416,8 +394,12 @@
     addBtn: document.getElementById('addBtn'),
     menuBtn: document.getElementById('menuBtn'),
     refreshBtn: document.getElementById('refreshBtn'),
-    favsRow: document.getElementById('favsRow'),
+    versionLabel: document.getElementById('versionLabel'),
+    tabsRow: document.getElementById('tabsRow'),
+    tabComprar: document.getElementById('tabComprar'),
+    tabCasa: document.getElementById('tabCasa'),
   };
+  els.versionLabel.textContent = `v${CFG.VERSION} · ${CFG.RELEASE_DATE}`;
 
   function showToast(msg){
     const t = document.createElement('div');
@@ -539,7 +521,7 @@
       const createRes = await graph(`/me/drive/root:/${CFG.FOLDER_NAME}/${CFG.FILE_NAME}:/content`, {
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ items: [], favorites: [] })
+        body: JSON.stringify({ items: [] })
       });
       const data = await createRes.json();
       ownerItemId = data.id;
@@ -746,10 +728,8 @@
       if (!res.ok) throw new Error('read failed');
       const data = await res.json();
       currentItems = data.items || [];
-      currentFavorites = data.favorites || [];
       lastEtag = meta.eTag;
       render();
-      renderFavorites();
       setSync('ok', 'Sincronizado');
     }catch(e){
       console.error(e);
@@ -769,12 +749,11 @@
         const remoteRes = await graph(contentPath());
         const remoteData = await remoteRes.json();
         currentItems = mergeItems(remoteData.items || [], currentItems);
-        currentFavorites = mergeById(remoteData.favorites || [], currentFavorites);
       }
       const putRes = await graph(contentPath(), {
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ items: currentItems, favorites: currentFavorites })
+        body: JSON.stringify({ items: currentItems })
       });
       const putData = await putRes.json();
       lastEtag = putData.eTag;
@@ -786,13 +765,6 @@
       saving = false;
       if (pendingSave){ pendingSave = false; saveItems(); }
     }
-  }
-
-  function mergeById(remote, local){
-    const byId = new Map();
-    remote.forEach(it => byId.set(it.id, it));
-    local.forEach(it => byId.set(it.id, it)); // local gana en conflicto directo
-    return Array.from(byId.values());
   }
 
   function mergeItems(remote, local){
@@ -817,6 +789,7 @@
     els.gate.classList.add('hidden');
     els.main.classList.remove('hidden');
     els.addbar.classList.remove('hidden');
+    els.tabsRow.classList.remove('hidden');
     buildCatsRow();
   }
 
@@ -832,124 +805,40 @@
     });
   }
 
-  // ---------- FAVORITOS ----------
-  function renderFavorites(){
-    const pendingNames = new Set(currentItems.filter(i => !i.checked).map(i => i.name.toLowerCase()));
-    const chips = currentFavorites.map(f => {
-      const inList = pendingNames.has(f.name.toLowerCase());
-      return `<button class="fav-chip${inList?' in-list':''}" data-id="${f.id}">★ ${escapeHtml(f.name)}</button>`;
-    }).join('');
-    els.favsRow.innerHTML = chips + `<button class="fav-chip-edit" id="favEditOpenBtn">✏️ Favoritos</button>`;
-    els.favsRow.querySelectorAll('.fav-chip').forEach(chip => {
-      chip.onclick = () => addFavoriteToList(chip.dataset.id);
-    });
-    document.getElementById('favEditOpenBtn').onclick = openFavModal;
-  }
-
-  function addFavoriteToList(favId){
-    const fav = currentFavorites.find(f => f.id === favId);
-    if (!fav) return;
-    const already = currentItems.some(i => !i.checked && i.name.toLowerCase() === fav.name.toLowerCase());
-    if (already){ showToast(fav.name + " ya está en la lista"); return; }
-    currentItems.unshift({
-      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
-      name: fav.name,
-      category: fav.category || 'Otros',
-      checked: false,
-      addedBy: account.name || account.username,
-      addedAt: new Date().toISOString()
-    });
-    render();
-    renderFavorites();
-    saveItems();
-    showToast(fav.name + " agregado ✓");
-  }
-
-  function openFavModal(){
-    const sel = document.getElementById('favNewCat');
-    sel.innerHTML = CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
-    renderFavEditList();
-    document.getElementById('favModal').classList.remove('hidden');
-  }
-
-  function renderFavEditList(){
-    const list = document.getElementById('favEditList');
-    if (currentFavorites.length === 0){
-      list.innerHTML = `<div style="color:var(--chalk-dim); font-size:13px;">Todavía no agregaste favoritos.</div>`;
-      return;
-    }
-    list.innerHTML = currentFavorites.map(f => `
-      <div class="fav-edit-row" data-id="${f.id}">
-        <div>
-          <div class="fname">${escapeHtml(f.name)}</div>
-          <div class="fcat">${escapeHtml(f.category || 'Otros')}</div>
-        </div>
-        <button class="fav-edit-del" data-id="${f.id}">✕</button>
-      </div>`).join('');
-    list.querySelectorAll('.fav-edit-del').forEach(btn => {
-      btn.onclick = () => deleteFavorite(btn.dataset.id);
-    });
-  }
-
-  function deleteFavorite(id){
-    currentFavorites = currentFavorites.filter(f => f.id !== id);
-    renderFavEditList();
-    renderFavorites();
-    saveItems();
-  }
-
-  function addNewFavorite(){
-    const name = document.getElementById('favNewName').value.trim();
-    const category = document.getElementById('favNewCat').value;
-    if (!name){ showToast("Escribí un nombre"); return; }
-    currentFavorites.push({
-      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
-      name,
-      category
-    });
-    document.getElementById('favNewName').value = '';
-    renderFavEditList();
-    renderFavorites();
-    saveItems();
-    showToast("Favorito agregado ✓");
-  }
-
   function render(){
     const pending = currentItems.filter(i => !i.checked);
     const done = currentItems.filter(i => i.checked);
+
+    els.tabComprar.textContent = `Para comprar (${pending.length})`;
+    els.tabCasa.textContent = `En casa (${done.length})`;
 
     if (currentItems.length === 0){
       els.main.innerHTML = `<div class="empty-state"><span class="mark">🧺</span>El catálogo está vacío.<br>Agregá los productos que compran habitualmente.</div>`;
       return;
     }
 
+    const list = currentView === 'comprar' ? pending : done;
+
+    if (list.length === 0){
+      const msg = currentView === 'comprar'
+        ? `<div class="empty-state"><span class="mark">✅</span>No hay nada pendiente por ahora.<br>Cuando se termine algo, marcalo en «En casa».</div>`
+        : `<div class="empty-state"><span class="mark">🏠</span>Todavía no tenés nada marcado como "en casa".</div>`;
+      els.main.innerHTML = msg;
+      return;
+    }
+
     const groups = {};
-    pending.forEach(it => {
+    list.forEach(it => {
       const c = it.category || 'Otros';
       (groups[c] = groups[c] || []).push(it);
     });
 
     let html = '';
-    if (pending.length === 0){
-      html += `<div class="empty-state"><span class="mark">✅</span>No hay nada pendiente por ahora.<br>Cuando se termine algo, marcalo abajo.</div>`;
-    } else {
-      const orderedCats = [...CATEGORIES, ...Object.keys(groups).filter(c => !CATEGORIES.includes(c))];
-      orderedCats.forEach(cat => {
-        if (!groups[cat]) return;
-        html += `<div class="cat-group"><div class="cat-title">${cat}</div>`;
-        groups[cat].forEach(it => { html += itemRowHtml(it); });
-        html += `</div>`;
-      });
-    }
-
-    if (done.length > 0){
-      html += `<div class="done-section">
-        <div class="done-header">
-          <div class="cat-title">En casa, no hace falta (${done.length})</div>
-        </div>
-        ${done.map(itemRowHtml).join('')}
-      </div>`;
-    }
+    Object.keys(groups).sort((a,b) => a.localeCompare(b, 'es')).forEach(cat => {
+      html += `<div class="cat-group"><div class="cat-title">${cat}</div>`;
+      groups[cat].forEach(it => { html += itemRowHtml(it); });
+      html += `</div>`;
+    });
 
     els.main.innerHTML = html;
 
@@ -983,14 +872,12 @@
     it.checked = !it.checked;
     if (it.checked){ it.checkedAt = new Date().toISOString(); it.checkedBy = account.name || account.username; }
     render();
-    renderFavorites();
     saveItems();
   }
 
   function deleteItem(id){
     currentItems = currentItems.filter(i => i.id !== id);
     render();
-    renderFavorites();
     saveItems();
   }
 
@@ -1007,12 +894,24 @@
     });
     els.newItemInput.value = '';
     render();
-    renderFavorites();
     saveItems();
   }
 
   els.addBtn.addEventListener('click', addItem);
   els.newItemInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addItem(); });
+
+  els.tabComprar.addEventListener('click', () => {
+    currentView = 'comprar';
+    els.tabComprar.classList.add('active');
+    els.tabCasa.classList.remove('active');
+    render();
+  });
+  els.tabCasa.addEventListener('click', () => {
+    currentView = 'casa';
+    els.tabCasa.classList.add('active');
+    els.tabComprar.classList.remove('active');
+    render();
+  });
 
   els.refreshBtn.addEventListener('click', async () => {
     els.refreshBtn.style.transition = 'transform 0.5s ease';
@@ -1085,11 +984,6 @@
       btn.disabled = false; btn.textContent = "Compartir acceso";
     }
   });
-
-  document.getElementById('favModalCloseBtn').addEventListener('click', () => {
-    document.getElementById('favModal').classList.add('hidden');
-  });
-  document.getElementById('favAddBtn').addEventListener('click', addNewFavorite);
 
   // Registrar service worker
   if ('serviceWorker' in navigator){
