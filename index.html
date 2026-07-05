@@ -282,6 +282,7 @@
     </div>
     <div class="who hidden" id="whoBox">
       <div class="avatar" id="avatarEl">D</div>
+      <button class="icon-btn" id="refreshBtn" title="Actualizar">⟳</button>
       <button class="icon-btn" id="menuBtn" title="Opciones">⋮</button>
     </div>
   </header>
@@ -414,6 +415,7 @@
     newItemInput: document.getElementById('newItemInput'),
     addBtn: document.getElementById('addBtn'),
     menuBtn: document.getElementById('menuBtn'),
+    refreshBtn: document.getElementById('refreshBtn'),
     favsRow: document.getElementById('favsRow'),
   };
 
@@ -808,9 +810,6 @@
 
   function startPolling(){
     loadItems();
-    setInterval(() => { if (!document.hidden) loadItems(); }, 8000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) loadItems(); });
-    window.addEventListener('focus', loadItems);
   }
 
   // ---------- UI ----------
@@ -920,7 +919,7 @@
     const done = currentItems.filter(i => i.checked);
 
     if (currentItems.length === 0){
-      els.main.innerHTML = `<div class="empty-state"><span class="mark">🧺</span>La lista está vacía.<br>Agregá lo primero que necesiten ahí abajo.</div>`;
+      els.main.innerHTML = `<div class="empty-state"><span class="mark">🧺</span>El catálogo está vacío.<br>Agregá los productos que compran habitualmente.</div>`;
       return;
     }
 
@@ -932,7 +931,7 @@
 
     let html = '';
     if (pending.length === 0){
-      html += `<div class="empty-state"><span class="mark">✅</span>¡Compraron todo! Buen trabajo.</div>`;
+      html += `<div class="empty-state"><span class="mark">✅</span>No hay nada pendiente por ahora.<br>Cuando se termine algo, marcalo abajo.</div>`;
     } else {
       const orderedCats = [...CATEGORIES, ...Object.keys(groups).filter(c => !CATEGORIES.includes(c))];
       orderedCats.forEach(cat => {
@@ -946,8 +945,7 @@
     if (done.length > 0){
       html += `<div class="done-section">
         <div class="done-header">
-          <div class="cat-title">Ya compraron (${done.length})</div>
-          <button class="clear-btn" id="clearDoneBtn">Vaciar</button>
+          <div class="cat-title">En casa, no hace falta (${done.length})</div>
         </div>
         ${done.map(itemRowHtml).join('')}
       </div>`;
@@ -961,8 +959,6 @@
     els.main.querySelectorAll('.item-del').forEach(el => {
       el.onclick = (e) => { e.stopPropagation(); deleteItem(el.closest('.item-row').dataset.id); };
     });
-    const clearBtn = document.getElementById('clearDoneBtn');
-    if (clearBtn) clearBtn.onclick = clearDone;
   }
 
   function itemRowHtml(it){
@@ -998,13 +994,6 @@
     saveItems();
   }
 
-  function clearDone(){
-    currentItems = currentItems.filter(i => !i.checked);
-    render();
-    renderFavorites();
-    saveItems();
-  }
-
   function addItem(){
     const name = els.newItemInput.value.trim();
     if (!name) return;
@@ -1024,6 +1013,13 @@
 
   els.addBtn.addEventListener('click', addItem);
   els.newItemInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addItem(); });
+
+  els.refreshBtn.addEventListener('click', async () => {
+    els.refreshBtn.style.transition = 'transform 0.5s ease';
+    els.refreshBtn.style.transform = 'rotate(360deg)';
+    await loadItems();
+    setTimeout(() => { els.refreshBtn.style.transform = 'rotate(0deg)'; }, 50);
+  });
 
   els.menuBtn.addEventListener('click', () => {
     document.getElementById('menuShareBtn').classList.toggle('hidden', role !== 'owner');
