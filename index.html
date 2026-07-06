@@ -18,8 +18,8 @@
     CLIENT_ID: "746f62ec-3d96-4603-8b89-2284ed4e9321",   // Application (client) ID de tu app registrada en Entra
     FOLDER_NAME: "ListaSuperFamiliar",     // nombre de la carpeta en OneDrive donde vive el archivo
     FILE_NAME: "lista.json",
-    VERSION: "2.1",
-    RELEASE_DATE: "05/07/2026"
+    VERSION: "2.2",
+    RELEASE_DATE: "06/07/2026"
   };
 </script>
 <!-- =========================================================== -->
@@ -171,10 +171,14 @@
   .check.checked{background:var(--accent); border-color:var(--accent); color:#1B3A2F;}
   .item-info{flex:1; min-width:0; cursor:pointer;}
   .item-name{font-size:16px; font-weight:500;}
-  .item-row.done .item-name{color:var(--chalk-dim); text-decoration:line-through; text-decoration-color:var(--chalk-dim);}
   .item-meta{font-size:11px; color:var(--chalk-dim); font-family:'IBM Plex Mono', monospace; margin-top:2px;}
   .item-del{
     background:none; border:none; color:var(--chalk-dim); font-size:18px; padding:6px; cursor:pointer; flex-shrink:0;
+  }
+  .item-cat-btn{
+    flex-shrink:0; padding:5px 10px; border-radius:999px; font-size:11px;
+    border:1px solid var(--line); color:var(--chalk-dim); background:rgba(0,0,0,0.15);
+    font-family:'IBM Plex Mono', monospace; cursor:pointer; white-space:nowrap;
   }
 
   .empty-state{
@@ -308,6 +312,15 @@
     </div>
   </div>
 
+</div>
+
+<!-- Modal para cambiar categoría -->
+<div class="modal-overlay hidden" id="catModal">
+  <div class="modal-box">
+    <h3 style="margin-bottom:14px;">Cambiar categoría</h3>
+    <div id="catModalChips" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
+    <button class="btn btn-ghost" id="catModalCloseBtn" style="width:100%; justify-content:center;">Cancelar</button>
+  </div>
 </div>
 
 <!-- Modal de menú (⋮) -->
@@ -836,7 +849,9 @@
     let html = '';
     Object.keys(groups).sort((a,b) => a.localeCompare(b, 'es')).forEach(cat => {
       html += `<div class="cat-group"><div class="cat-title">${cat}</div>`;
-      groups[cat].forEach(it => { html += itemRowHtml(it); });
+      groups[cat]
+        .sort((a,b) => a.name.localeCompare(b.name, 'es'))
+        .forEach(it => { html += itemRowHtml(it); });
       html += `</div>`;
     });
 
@@ -846,7 +861,10 @@
       el.onclick = () => toggleItem(el.closest('.item-row').dataset.id);
     });
     els.main.querySelectorAll('.item-del').forEach(el => {
-      el.onclick = (e) => { e.stopPropagation(); deleteItem(el.closest('.item-row').dataset.id); };
+      el.onclick = (e) => { e.stopPropagation(); deleteItem(el.dataset.id); };
+    });
+    els.main.querySelectorAll('.item-cat-btn').forEach(el => {
+      el.onclick = (e) => { e.stopPropagation(); openCatModal(el.dataset.id); };
     });
   }
 
@@ -858,12 +876,33 @@
         <div class="item-name">${escapeHtml(it.name)}</div>
         <div class="item-meta">${who ? 'agregó ' + who : ''}</div>
       </div>
-      <button class="item-del">✕</button>
+      <button class="item-cat-btn" data-id="${it.id}">${escapeHtml(it.category || 'Otros')}</button>
+      <button class="item-del" data-id="${it.id}">✕</button>
     </div>`;
   }
 
   function escapeHtml(s){
     const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+  }
+
+  function openCatModal(itemId){
+    const chips = document.getElementById('catModalChips');
+    chips.innerHTML = CATEGORIES.map(c => `<button class="cat-chip" data-cat="${c}">${c}</button>`).join('');
+    chips.querySelectorAll('.cat-chip').forEach(chip => {
+      chip.onclick = () => {
+        setItemCategory(itemId, chip.dataset.cat);
+        document.getElementById('catModal').classList.add('hidden');
+      };
+    });
+    document.getElementById('catModal').classList.remove('hidden');
+  }
+
+  function setItemCategory(id, category){
+    const it = currentItems.find(i => i.id === id);
+    if (!it) return;
+    it.category = category;
+    render();
+    saveItems();
   }
 
   function toggleItem(id){
@@ -911,6 +950,9 @@
     els.tabCasa.classList.add('active');
     els.tabComprar.classList.remove('active');
     render();
+  });
+  document.getElementById('catModalCloseBtn').addEventListener('click', () => {
+    document.getElementById('catModal').classList.add('hidden');
   });
 
   els.refreshBtn.addEventListener('click', async () => {
