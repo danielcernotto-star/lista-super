@@ -18,8 +18,8 @@
     CLIENT_ID: "746f62ec-3d96-4603-8b89-2284ed4e9321",   // Application (client) ID de tu app registrada en Entra
     FOLDER_NAME: "ListaSuperFamiliar",     // nombre de la carpeta en OneDrive donde vive el archivo
     FILE_NAME: "lista.json",
-    VERSION: "2.2",
-    RELEASE_DATE: "06/07/2026"
+    VERSION: "2.3",
+    RELEASE_DATE: "21/07/2026"
   };
 </script>
 <!-- =========================================================== -->
@@ -199,11 +199,18 @@
     display:flex; gap:8px; margin:0 20px 14px;
   }
   .tab-btn{
-    flex:1; padding:11px 10px; border-radius:12px; text-align:center;
+    flex:1; padding:11px 6px; border-radius:12px; text-align:center;
     border:1px solid var(--line); background:rgba(0,0,0,0.15); color:var(--chalk-dim);
-    font-family:'Work Sans',sans-serif; font-weight:600; font-size:14px; cursor:pointer;
+    font-family:'Work Sans',sans-serif; font-weight:600; font-size:12.5px; cursor:pointer;
   }
   .tab-btn.active{background:var(--accent); color:#1B3A2F; border-color:var(--accent);}
+
+  .search-row{margin:0 20px 14px;}
+  .search-row input{
+    width:100%; background:rgba(0,0,0,0.2); border:1px solid var(--line); color:var(--chalk);
+    padding:11px 14px; border-radius:999px; font-size:14px; font-family:'Work Sans',sans-serif;
+  }
+  .search-row input::placeholder{color:rgba(244,239,225,0.35);}
 
   /* ---------- ADD BAR (fijo abajo, alcance del pulgar) ---------- */
   .addbar{
@@ -290,7 +297,12 @@
 
   <div class="tabs-row hidden" id="tabsRow">
     <button class="tab-btn active" id="tabComprar" data-view="comprar">Para comprar</button>
-    <button class="tab-btn" id="tabCasa" data-view="casa">En casa</button>
+    <button class="tab-btn" id="tabUltima" data-view="ultima">Ult Cpra</button>
+    <button class="tab-btn" id="tabCasa" data-view="casa">Lista Gral</button>
+  </div>
+
+  <div class="search-row hidden" id="searchRow">
+    <input type="text" id="searchInput" placeholder="🔎 Buscar producto…" autocomplete="off">
   </div>
 
   <!-- GATE: login / configuración inicial -->
@@ -358,7 +370,8 @@
   // Lista de categorías disponibles para etiquetar productos.
   const CATEGORIES = ["Almacén","Bebidas","Carnicería","Lácteos","Limpieza","Panadería","Verdulería","Otros"];
   let selectedCategory = "Otros";
-  let currentView = 'comprar'; // 'comprar' | 'casa'
+  let currentView = 'comprar'; // 'comprar' | 'ultima' | 'casa'
+  let searchQuery = '';
   let lastEtag = null;
   let currentItems = [];
   let saving = false;
@@ -410,7 +423,10 @@
     versionLabel: document.getElementById('versionLabel'),
     tabsRow: document.getElementById('tabsRow'),
     tabComprar: document.getElementById('tabComprar'),
+    tabUltima: document.getElementById('tabUltima'),
     tabCasa: document.getElementById('tabCasa'),
+    searchRow: document.getElementById('searchRow'),
+    searchInput: document.getElementById('searchInput'),
   };
   els.versionLabel.textContent = `v${CFG.VERSION} · ${CFG.RELEASE_DATE}`;
 
@@ -740,7 +756,10 @@
       const res = await graph(contentPath());
       if (!res.ok) throw new Error('read failed');
       const data = await res.json();
-      currentItems = data.items || [];
+      currentItems = (data.items || []).map(it => ({
+        ...it,
+        state: it.state || (it.checked ? 'casa' : 'comprar')
+      }));
       lastEtag = meta.eTag;
       render();
       setSync('ok', 'Sincronizado');
@@ -786,8 +805,8 @@
     local.forEach(it => {
       const r = byId.get(it.id);
       if (!r) { byId.set(it.id, it); return; }
-      const rTime = new Date(r.checkedAt || r.addedAt || 0).getTime();
-      const lTime = new Date(it.checkedAt || it.addedAt || 0).getTime();
+      const rTime = new Date(r.updatedAt || r.addedAt || 0).getTime();
+      const lTime = new Date(it.updatedAt || it.addedAt || 0).getTime();
       byId.set(it.id, lTime >= rTime ? it : r);
     });
     return Array.from(byId.values());
@@ -803,6 +822,7 @@
     els.main.classList.remove('hidden');
     els.addbar.classList.remove('hidden');
     els.tabsRow.classList.remove('hidden');
+    els.searchRow.classList.remove('hidden');
     buildCatsRow();
   }
 
@@ -819,23 +839,38 @@
   }
 
   function render(){
-    const pending = currentItems.filter(i => !i.checked);
-    const done = currentItems.filter(i => i.checked);
+    const comprar = currentItems.filter(i => i.state === 'comprar');
+    const ultima = currentItems.filter(i => i.state === 'ultima');
+    const casa = currentItems.filter(i => i.state === 'casa');
 
-    els.tabComprar.textContent = `Para comprar (${pending.length})`;
-    els.tabCasa.textContent = `En casa (${done.length})`;
+    els.tabComprar.textContent = `Para comprar (${comprar.length})`;
+    els.tabUltima.textContent = `Ult Cpra (${ultima.length})`;
+    els.tabCasa.textContent = `Lista Gral (${casa.length})`;
 
     if (currentItems.length === 0){
       els.main.innerHTML = `<div class="empty-state"><span class="mark">🧺</span>El catálogo está vacío.<br>Agregá los productos que compran habitualmente.</div>`;
       return;
     }
 
-    const list = currentView === 'comprar' ? pending : done;
+    const byView = { comprar, ultima, casa };
+    let list = byView[currentView];
+
+    const q = searchQuery.trim().toLowerCase();
+    if (q){
+      list = list.filter(it => it.name.toLowerCase().includes(q));
+    }
 
     if (list.length === 0){
-      const msg = currentView === 'comprar'
-        ? `<div class="empty-state"><span class="mark">✅</span>No hay nada pendiente por ahora.<br>Cuando se termine algo, marcalo en «En casa».</div>`
-        : `<div class="empty-state"><span class="mark">🏠</span>Todavía no tenés nada marcado como "en casa".</div>`;
+      let msg;
+      if (q){
+        msg = `<div class="empty-state"><span class="mark">🔎</span>No hay productos que coincidan con "${escapeHtml(searchQuery)}" en esta lista.</div>`;
+      } else if (currentView === 'comprar'){
+        msg = `<div class="empty-state"><span class="mark">✅</span>No hay nada pendiente por ahora.<br>Cuando se termine algo, marcalo en «Lista Gral».</div>`;
+      } else if (currentView === 'ultima'){
+        msg = `<div class="empty-state"><span class="mark">🛒</span>Todavía no marcaste nada como comprado en este viaje.</div>`;
+      } else {
+        msg = `<div class="empty-state"><span class="mark">🏠</span>Todavía no tenés nada en la lista general.</div>`;
+      }
       els.main.innerHTML = msg;
       return;
     }
@@ -861,7 +896,12 @@
       el.onclick = () => toggleItem(el.closest('.item-row').dataset.id);
     });
     els.main.querySelectorAll('.item-del').forEach(el => {
-      el.onclick = (e) => { e.stopPropagation(); deleteItem(el.dataset.id); };
+      el.onclick = (e) => {
+        e.stopPropagation();
+        const it = currentItems.find(i => i.id === el.dataset.id);
+        if (!it) return;
+        if (confirm(`¿Eliminar "${it.name}" para siempre del catálogo?`)) deleteItem(el.dataset.id);
+      };
     });
     els.main.querySelectorAll('.item-cat-btn').forEach(el => {
       el.onclick = (e) => { e.stopPropagation(); openCatModal(el.dataset.id); };
@@ -870,14 +910,15 @@
 
   function itemRowHtml(it){
     const who = it.addedBy ? it.addedBy.split(' ')[0] : '';
-    return `<div class="item-row${it.checked?' done':''}" data-id="${it.id}">
-      <div class="check${it.checked?' checked':''}">✓</div>
+    const isSettled = it.state === 'casa';
+    return `<div class="item-row" data-id="${it.id}">
+      <div class="check${isSettled?' checked':''}">✓</div>
       <div class="item-info">
         <div class="item-name">${escapeHtml(it.name)}</div>
         <div class="item-meta">${who ? 'agregó ' + who : ''}</div>
       </div>
       <button class="item-cat-btn" data-id="${it.id}">${escapeHtml(it.category || 'Otros')}</button>
-      <button class="item-del" data-id="${it.id}">✕</button>
+      ${isSettled ? `<button class="item-del" data-id="${it.id}">✕</button>` : ''}
     </div>`;
   }
 
@@ -905,16 +946,21 @@
     saveItems();
   }
 
+  const STATE_CYCLE = { comprar: 'ultima', ultima: 'casa', casa: 'comprar' };
+
   function toggleItem(id){
     const it = currentItems.find(i => i.id === id);
     if (!it) return;
-    it.checked = !it.checked;
-    if (it.checked){ it.checkedAt = new Date().toISOString(); it.checkedBy = account.name || account.username; }
+    it.state = STATE_CYCLE[it.state] || 'comprar';
+    it.updatedAt = new Date().toISOString();
+    it.updatedBy = account.name || account.username;
     render();
     saveItems();
   }
 
   function deleteItem(id){
+    const it = currentItems.find(i => i.id === id);
+    if (!it || it.state !== 'casa') return; // solo se borra desde Lista Gral
     currentItems = currentItems.filter(i => i.id !== id);
     render();
     saveItems();
@@ -927,7 +973,7 @@
       id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
       name,
       category: selectedCategory,
-      checked: false,
+      state: 'comprar',
       addedBy: account.name || account.username,
       addedAt: new Date().toISOString()
     });
@@ -939,18 +985,22 @@
   els.addBtn.addEventListener('click', addItem);
   els.newItemInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addItem(); });
 
-  els.tabComprar.addEventListener('click', () => {
-    currentView = 'comprar';
-    els.tabComprar.classList.add('active');
-    els.tabCasa.classList.remove('active');
+  const allTabs = () => [els.tabComprar, els.tabUltima, els.tabCasa];
+  function activateTab(view, btn){
+    currentView = view;
+    allTabs().forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    render();
+  }
+  els.tabComprar.addEventListener('click', () => activateTab('comprar', els.tabComprar));
+  els.tabUltima.addEventListener('click', () => activateTab('ultima', els.tabUltima));
+  els.tabCasa.addEventListener('click', () => activateTab('casa', els.tabCasa));
+
+  els.searchInput.addEventListener('input', () => {
+    searchQuery = els.searchInput.value;
     render();
   });
-  els.tabCasa.addEventListener('click', () => {
-    currentView = 'casa';
-    els.tabCasa.classList.add('active');
-    els.tabComprar.classList.remove('active');
-    render();
-  });
+
   document.getElementById('catModalCloseBtn').addEventListener('click', () => {
     document.getElementById('catModal').classList.add('hidden');
   });
