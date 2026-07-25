@@ -18,7 +18,7 @@
     CLIENT_ID: "746f62ec-3d96-4603-8b89-2284ed4e9321",   // Application (client) ID de tu app registrada en Entra
     FOLDER_NAME: "ListaSuperFamiliar",     // nombre de la carpeta en OneDrive donde vive el archivo
     FILE_NAME: "lista.json",
-    VERSION: "2.3",
+    VERSION: "2.6",
     RELEASE_DATE: "21/07/2026"
   };
 </script>
@@ -212,6 +212,13 @@
   }
   .search-row input::placeholder{color:rgba(244,239,225,0.35);}
 
+  .bulk-move-btn{
+    display:block; width:100%; margin:0 0 18px; padding:13px 16px; border-radius:14px;
+    border:1px solid rgba(242,183,5,0.4); background:rgba(242,183,5,0.12); color:var(--accent);
+    font-family:'Work Sans',sans-serif; font-weight:600; font-size:14px; cursor:pointer;
+  }
+  .bulk-move-btn:active{transform:scale(0.98);}
+
   /* ---------- ADD BAR (fijo abajo, alcance del pulgar) ---------- */
   .addbar{
     position:sticky; bottom:0; z-index:2;
@@ -372,7 +379,6 @@
   let selectedCategory = "Otros";
   let currentView = 'comprar'; // 'comprar' | 'ultima' | 'casa'
   let searchQuery = '';
-  let lastEtag = null;
   let currentItems = [];
   let saving = false;
   let pendingSave = false;
@@ -392,7 +398,7 @@
       authority: "https://login.microsoftonline.com/consumers",
       redirectUri: window.location.origin + window.location.pathname
     },
-    cache: { cacheLocation: "localStorage", storeAuthStateInCookie: false }
+    cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
   };
   const msalInstance = new msal.PublicClientApplication(msalConfig);
   const SCOPES = ["User.Read", "Files.ReadWrite"];
@@ -743,24 +749,21 @@
     if (role === 'owner') return `/me/drive/items/${ownerItemId}/content`;
     return `/drives/${guestDriveId}/items/${guestItemId}/content`;
   }
-  function metaPath(){
-    if (role === 'owner') return `/me/drive/items/${ownerItemId}`;
-    return `/drives/${guestDriveId}/items/${guestItemId}`;
+
+  function migrateItems(items){
+    return (items || []).map(it => ({
+      ...it,
+      state: it.state || (it.checked ? 'casa' : 'comprar')
+    }));
   }
 
   async function loadItems(){
     setSync('syncing', 'Sincronizando…');
     try{
-      const metaRes = await graph(metaPath() + '?$select=eTag,lastModifiedDateTime');
-      const meta = await metaRes.json();
       const res = await graph(contentPath());
       if (!res.ok) throw new Error('read failed');
       const data = await res.json();
-      currentItems = (data.items || []).map(it => ({
-        ...it,
-        state: it.state || (it.checked ? 'casa' : 'comprar')
-      }));
-      lastEtag = meta.eTag;
+      currentItems = migrateItems(data.items);
       render();
       setSync('ok', 'Sincronizado');
     }catch(e){
@@ -774,25 +777,26 @@
     saving = true;
     setSync('syncing', 'Guardando…');
     try{
-      // merge sencillo: releer eTag actual; si cambió, traer remoto y unir por id
-      const metaRes = await graph(metaPath() + '?$select=eTag');
-      const meta = await metaRes.json();
-      if (meta.eTag && lastEtag && meta.eTag !== lastEtag){
-        const remoteRes = await graph(contentPath());
-        const remoteData = await remoteRes.json();
-        currentItems = mergeItems(remoteData.items || [], currentItems);
-      }
+      // Por seguridad, SIEMPRE traemos primero lo que hay en OneDrive y lo
+      // fusionamos con lo local antes de escribir. Así nunca se pisa el
+      // archivo con una copia local incompleta (ej: si la carga inicial
+      // falló o quedó a mitad de camino).
+      const remoteRes = await graph(contentPath());
+      if (!remoteRes.ok) throw new Error('No se pudo leer el estado remoto antes de guardar');
+      const remoteData = await remoteRes.json();
+      currentItems = mergeItems(migrateItems(remoteData.items), currentItems);
+
       const putRes = await graph(contentPath(), {
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ items: currentItems })
       });
-      const putData = await putRes.json();
-      lastEtag = putData.eTag;
+      if (!putRes.ok) throw new Error('write failed');
+      render();
       setSync('ok', 'Sincronizado');
     }catch(e){
       console.error(e);
-      setSync('error', 'No se pudo guardar, reintentando…');
+      setSync('error', 'No se pudo guardar. Tocá ⟳ para reintentar.');
     }finally{
       saving = false;
       if (pendingSave){ pendingSave = false; saveItems(); }
@@ -882,6 +886,9 @@
     });
 
     let html = '';
+    if (currentView === 'ultima' && ultima.length > 0){
+      html += `<button class="bulk-move-btn" id="bulkMoveBtn">✓ Mover todo a Lista Gral (${ultima.length})</button>`;
+    }
     Object.keys(groups).sort((a,b) => a.localeCompare(b, 'es')).forEach(cat => {
       html += `<div class="cat-group"><div class="cat-title">${cat}</div>`;
       groups[cat]
@@ -891,6 +898,9 @@
     });
 
     els.main.innerHTML = html;
+
+    const bulkBtn = document.getElementById('bulkMoveBtn');
+    if (bulkBtn) bulkBtn.onclick = moveAllUltimaToCasa;
 
     els.main.querySelectorAll('.check, .item-info').forEach(el => {
       el.onclick = () => toggleItem(el.closest('.item-row').dataset.id);
@@ -908,17 +918,31 @@
     });
   }
 
+  function moveAllUltimaToCasa(){
+    const toMove = currentItems.filter(i => i.state === 'ultima');
+    if (toMove.length === 0) return;
+    const names = toMove.map(i => i.name).slice(0, 6).join(', ') + (toMove.length > 6 ? '…' : '');
+    const ok = confirm(`¿Mover estos ${toMove.length} productos a Lista Gral?\n\n${names}`);
+    if (!ok) return;
+    const now = new Date().toISOString();
+    const who = account.name || account.username;
+    toMove.forEach(it => { it.state = 'casa'; it.updatedAt = now; it.updatedBy = who; });
+    render();
+    saveItems();
+    showToast(`${toMove.length} productos movidos a Lista Gral ✓`);
+  }
+
   function itemRowHtml(it){
     const who = it.addedBy ? it.addedBy.split(' ')[0] : '';
-    const isSettled = it.state === 'casa';
+    const canDelete = it.state === 'casa';
     return `<div class="item-row" data-id="${it.id}">
-      <div class="check${isSettled?' checked':''}">✓</div>
+      <div class="check">✓</div>
       <div class="item-info">
         <div class="item-name">${escapeHtml(it.name)}</div>
         <div class="item-meta">${who ? 'agregó ' + who : ''}</div>
       </div>
       <button class="item-cat-btn" data-id="${it.id}">${escapeHtml(it.category || 'Otros')}</button>
-      ${isSettled ? `<button class="item-del" data-id="${it.id}">✕</button>` : ''}
+      ${canDelete ? `<button class="item-del" data-id="${it.id}">✕</button>` : ''}
     </div>`;
   }
 
@@ -973,7 +997,7 @@
       id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
       name,
       category: selectedCategory,
-      state: 'comprar',
+      state: 'casa',
       addedBy: account.name || account.username,
       addedAt: new Date().toISOString()
     });
