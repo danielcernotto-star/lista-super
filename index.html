@@ -18,8 +18,8 @@
     CLIENT_ID: "746f62ec-3d96-4603-8b89-2284ed4e9321",   // Application (client) ID de tu app registrada en Entra
     FOLDER_NAME: "ListaSuperFamiliar",     // nombre de la carpeta en OneDrive donde vive el archivo
     FILE_NAME: "lista.json",
-    VERSION: "2.7",
-    RELEASE_DATE: "02/08/2026"
+    VERSION: "2.8",
+    RELEASE_DATE: "09/08/2026"
   };
 </script>
 <!-- =========================================================== -->
@@ -1052,12 +1052,21 @@
   }
 
   // ---------- IMPORTAR PRECIOS DE TICKET ----------
-  const TICKET_LINE_RE = /^-?\d+(?:[.,]\d+)?\s+(.+?)\s+\$\s*([\d.,]+)\s+\$\s*[\d.,]+\s*$/;
-  const TICKET_SKIP_RE = /descuento|^total|efectivo|^cambio|^cajero|cantidad de|nro comprobante|^fecha|^cliente|^documento|^direccion|precio\s+importe/i;
+  // Formato "espaciado": 12 SERENISIMA LECHE... $ 2919.00 $ 35028.00
+  const TICKET_LINE_RE = /^-?\d+(?:[.,]\d+)?\s+(.+?)\s+\$\s*([\d.,]+)(?:\/[a-záéíóú]+)?\s+\$?\s*-?[\d.,]*\s*$/i;
+  const TICKET_SKIP_RE = /descuento|^total|efectivo|^cambio|^cajero|cantidad de|nro comprobante|^fecha|^cliente|^documento|^direccion|precio\s+importe|articulo|^-+$/i;
 
   function parseMoney(str){
-    // Los tickets usan "." como separador decimal y sin miles: "2919.00"
-    const n = parseFloat(String(str).replace(/[^\d.,]/g,'').replace(',', '.'));
+    let s = String(str).replace(/[^\d.,]/g, '');
+    if (s.includes(',') && s.includes('.')) {
+      // Formato argentino "1.985,00": "." es miles, "," es decimal
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (s.includes(',')) {
+      // Formato "1985,00": "," es decimal
+      s = s.replace(',', '.');
+    }
+    // si solo tiene puntos, se asume que ya está en formato decimal ("2919.00")
+    const n = parseFloat(s);
     return isNaN(n) ? null : n;
   }
 
@@ -1067,18 +1076,37 @@
     return new Date(`${m[3]}-${m[2]}-${m[1]}T12:00:00`).toISOString();
   }
 
+  // Formato "con barras": 3 | PEDRIN PAPAS FRITAS X70GR | $ 1.985,00 | $ 5.955,00
+  function parseTicketLinePipe(line){
+    const parts = line.split('|').map(p => p.trim());
+    if (parts.length < 3) return null;
+    const qtyStr = parts[0].replace(',', '.');
+    if (!/^-?\d+(\.\d+)?$/.test(qtyStr)) return null;
+    const description = parts[1];
+    if (!description) return null;
+    const priceRaw = parts[2].replace(/\/\s*[a-záéíóú]+$/i, ''); // quita sufijos tipo "/kg"
+    const unitPrice = parseMoney(priceRaw);
+    if (unitPrice === null) return null;
+    return { description, unitPrice };
+  }
+
+  function parseTicketLineSpaced(line){
+    const m = line.match(TICKET_LINE_RE);
+    if (!m) return null;
+    const description = m[1].trim();
+    const unitPrice = parseMoney(m[2]);
+    if (!description || unitPrice === null) return null;
+    return { description, unitPrice };
+  }
+
   function parseTicketText(text){
     const lines = text.split('\n');
     const parsed = [];
     for (const raw of lines){
       const line = raw.trim();
       if (!line || TICKET_SKIP_RE.test(line)) continue;
-      const m = line.match(TICKET_LINE_RE);
-      if (!m) continue;
-      const description = m[1].trim();
-      const unitPrice = parseMoney(m[2]);
-      if (!description || unitPrice === null) continue;
-      parsed.push({ description, unitPrice });
+      const result = line.includes('|') ? parseTicketLinePipe(line) : parseTicketLineSpaced(line);
+      if (result) parsed.push(result);
     }
     return parsed;
   }
