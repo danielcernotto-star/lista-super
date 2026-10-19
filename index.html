@@ -18,7 +18,7 @@
     CLIENT_ID: "746f62ec-3d96-4603-8b89-2284ed4e9321",   // Application (client) ID de tu app registrada en Entra
     FOLDER_NAME: "ListaSuperFamiliar",     // nombre de la carpeta en OneDrive donde vive el archivo
     FILE_NAME: "lista.json",
-    VERSION: "2.9",
+    VERSION: "2.10",
     RELEASE_DATE: "19/10/2026"
   };
 </script>
@@ -833,6 +833,26 @@
     }));
   }
 
+  // ---------- Borrados ----------
+  // Cada producto borrado se anota (id + fecha) para que la mezcla con
+  // OneDrive no lo vuelva a agregar, ni desde este celular ni desde el otro.
+  let deletedIds = [];
+  const DELETED_KEEP_DAYS = 180;
+
+  function pruneDeleted(list){
+    const limit = Date.now() - DELETED_KEEP_DAYS * 86400000;
+    return (list || []).filter(d => d && d.id && new Date(d.at || 0).getTime() >= limit);
+  }
+  function mergeDeleted(remote, local){
+    const byId = new Map();
+    pruneDeleted(remote).concat(pruneDeleted(local)).forEach(d => byId.set(d.id, d));
+    return Array.from(byId.values());
+  }
+  function dropDeleted(items, deleted){
+    const gone = new Set(deleted.map(d => d.id));
+    return items.filter(i => !gone.has(i.id));
+  }
+
   let dupWarned = false;
   function warnDuplicates(){
     if (dupWarned) return;
@@ -856,7 +876,8 @@
       const res = await graph(contentPath());
       if (!res.ok) throw new Error('read failed');
       const data = await res.json();
-      currentItems = migrateItems(data.items);
+      deletedIds = pruneDeleted(data.deleted);
+      currentItems = dropDeleted(migrateItems(data.items), deletedIds);
       warnDuplicates();
       render();
       setSync('ok', 'Sincronizado');
@@ -878,12 +899,16 @@
       const remoteRes = await graph(contentPath());
       if (!remoteRes.ok) throw new Error('No se pudo leer el estado remoto antes de guardar');
       const remoteData = await remoteRes.json();
-      currentItems = mergeItems(migrateItems(remoteData.items), currentItems);
+      deletedIds = mergeDeleted(remoteData.deleted, deletedIds);
+      currentItems = dropDeleted(
+        mergeItems(migrateItems(remoteData.items), currentItems),
+        deletedIds
+      );
 
       const putRes = await graph(contentPath(), {
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ items: currentItems })
+        body: JSON.stringify({ items: currentItems, deleted: deletedIds })
       });
       if (!putRes.ok) throw new Error('write failed');
       render();
@@ -1362,6 +1387,7 @@
     const it = currentItems.find(i => i.id === id);
     if (!it || it.state !== 'casa') return; // solo se borra desde Lista Gral
     currentItems = currentItems.filter(i => i.id !== id);
+    deletedIds = deletedIds.concat([{ id, at: new Date().toISOString() }]);
     render();
     saveItems();
   }
