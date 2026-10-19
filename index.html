@@ -18,8 +18,8 @@
     CLIENT_ID: "746f62ec-3d96-4603-8b89-2284ed4e9321",   // Application (client) ID de tu app registrada en Entra
     FOLDER_NAME: "ListaSuperFamiliar",     // nombre de la carpeta en OneDrive donde vive el archivo
     FILE_NAME: "lista.json",
-    VERSION: "2.8",
-    RELEASE_DATE: "09/08/2026"
+    VERSION: "2.9",
+    RELEASE_DATE: "19/10/2026"
   };
 </script>
 <!-- =========================================================== -->
@@ -272,8 +272,9 @@
 
   .toast{
     position:fixed; left:50%; bottom:calc(100px + var(--safe-bottom)); transform:translateX(-50%);
-    background:var(--chalk); color:var(--board); padding:10px 18px; border-radius:999px;
-    font-size:13px; font-weight:600; z-index:10; box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    background:var(--chalk); color:var(--board); padding:10px 18px; border-radius:16px;
+    width:max-content; max-width:calc(100vw - 40px); text-align:center;
+    font-size:13px; font-weight:600; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,0.3);
     animation:toastin 0.2s ease;
   }
   @keyframes toastin{from{opacity:0; transform:translate(-50%,8px);} to{opacity:1; transform:translate(-50%,0);}}
@@ -488,13 +489,36 @@
   };
   els.versionLabel.textContent = `v${CFG.VERSION} · ${CFG.RELEASE_DATE}`;
 
-  function showToast(msg){
+  function showToast(msg, ms){
     const t = document.createElement('div');
     t.className = 'toast';
     t.textContent = msg;
     document.body.appendChild(t);
-    setTimeout(()=>t.remove(), 2200);
+    setTimeout(()=>t.remove(), ms || 2200);
   }
+
+  // ---------- Helpers de nombres / fechas ----------
+  // Nombre normalizado para detectar duplicados: sin mayúsculas, acentos,
+  // signos ni espacios repetidos. "Leche  " y "leche" son el mismo producto.
+  function normName(s){
+    return String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+  function findByName(name){
+    const key = normName(name);
+    return key ? currentItems.find(i => normName(i.name) === key) : null;
+  }
+  function firstName(full){
+    return String(full || '').trim().split(/\s+/)[0] || '';
+  }
+  function formatDate(iso){
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' });
+  }
+  const VIEW_LABELS = { comprar: 'Para comprar', ultima: 'Ult Cpra', casa: 'Lista Gral' };
 
   function setSync(state, text){
     els.syncStrip.classList.remove('hidden');
@@ -809,6 +833,23 @@
     }));
   }
 
+  let dupWarned = false;
+  function warnDuplicates(){
+    if (dupWarned) return;
+    const seen = new Map();
+    const dups = [];
+    currentItems.forEach(i => {
+      const k = normName(i.name);
+      if (!k) return;
+      if (seen.has(k)) { if (!dups.includes(seen.get(k))) dups.push(seen.get(k)); }
+      else seen.set(k, i.name);
+    });
+    if (dups.length === 0) return;
+    dupWarned = true;
+    const sample = dups.slice(0, 3).join(', ') + (dups.length > 3 ? '…' : '');
+    showToast(`⚠ Hay ${dups.length} producto(s) repetido(s): ${sample}. Borrá los que sobren desde Lista Gral.`, 6000);
+  }
+
   async function loadItems(){
     setSync('syncing', 'Sincronizando…');
     try{
@@ -816,6 +857,7 @@
       if (!res.ok) throw new Error('read failed');
       const data = await res.json();
       currentItems = migrateItems(data.items);
+      warnDuplicates();
       render();
       setSync('ok', 'Sincronizado');
     }catch(e){
@@ -1009,8 +1051,30 @@
     showToast(`${toMove.length} productos movidos a Lista Gral ✓`);
   }
 
+  // Última compra: la fecha en que se marcó comprado, o la de un ticket
+  // cargado (lo que sea más reciente).
+  function lastPurchaseISO(it){
+    const dates = [it.lastPurchasedAt, it.lastPriceDate].filter(Boolean)
+      .map(d => new Date(d)).filter(d => !isNaN(d));
+    if (dates.length === 0) return null;
+    return new Date(Math.max(...dates)).toISOString();
+  }
+
+  function itemMetaText(it){
+    const parts = [];
+    if (it.state === 'comprar' || it.state === 'ultima'){
+      // Para productos que ya estaban en "Para comprar" antes de esta versión,
+      // quien los movió ahí es quien hizo el último cambio.
+      const requester = it.requestedBy || (it.state === 'comprar' ? it.updatedBy : '');
+      if (requester) parts.push('pidió ' + firstName(requester));
+    }
+    const last = lastPurchaseISO(it);
+    if (last) parts.push('últ. compra ' + formatDate(last));
+    return parts.join(' · ');
+  }
+
   function itemRowHtml(it){
-    const who = it.addedBy ? it.addedBy.split(' ')[0] : '';
+    const meta = itemMetaText(it);
     const canDelete = it.state === 'casa';
     const priceHtml = typeof it.lastPrice === 'number'
       ? `<div class="item-price">${formatMoney(it.lastPrice)}</div>`
@@ -1019,7 +1083,7 @@
       <div class="check">✓</div>
       <div class="item-info">
         <div class="item-name">${escapeHtml(it.name)}</div>
-        <div class="item-meta">${who ? 'agregó ' + who : ''}</div>
+        <div class="item-meta">${escapeHtml(meta)}</div>
         ${priceHtml}
       </div>
       <button class="item-cat-btn" data-id="${it.id}">${escapeHtml(it.category || 'Otros')}</button>
@@ -1235,8 +1299,13 @@
     let created = 0, updated = 0;
 
     rows.forEach(row => {
+      let target = null;
       if (row.matchId === '__new__'){
         if (!row.newName) return;
+        // Si ya existe un producto con ese nombre, se actualiza en vez de duplicarlo
+        target = findByName(row.newName);
+      }
+      if (row.matchId === '__new__' && !target){
         const newItem = {
           id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
           name: row.newName,
@@ -1251,7 +1320,7 @@
         currentItems.unshift(newItem);
         created++;
       } else {
-        const it = currentItems.find(i => i.id === row.matchId);
+        const it = target || currentItems.find(i => i.id === row.matchId);
         if (!it) return;
         it.lastPrice = row.price;
         it.lastPriceDate = date;
@@ -1271,9 +1340,20 @@
   function toggleItem(id){
     const it = currentItems.find(i => i.id === id);
     if (!it) return;
-    it.state = STATE_CYCLE[it.state] || 'comprar';
-    it.updatedAt = new Date().toISOString();
-    it.updatedBy = account.name || account.username;
+    const next = STATE_CYCLE[it.state] || 'comprar';
+    const now = new Date().toISOString();
+    const who = account.name || account.username;
+    it.state = next;
+    it.updatedAt = now;
+    it.updatedBy = who;
+    if (next === 'comprar'){
+      // Lista Gral → Para comprar: queda registrado quién lo pidió
+      it.requestedBy = who;
+      it.requestedAt = now;
+    } else if (next === 'ultima'){
+      // Para comprar → Ult Cpra: es el momento en que se compró
+      it.lastPurchasedAt = now;
+    }
     render();
     saveItems();
   }
@@ -1289,6 +1369,17 @@
   function addItem(){
     const name = els.newItemInput.value.trim();
     if (!name) return;
+    const existing = findByName(name);
+    if (existing){
+      // Ya existe: llevamos a la persona a verlo en vez de crear otro
+      showToast(`"${existing.name}" ya existe en ${VIEW_LABELS[existing.state] || 'la lista'}`, 3200);
+      els.newItemInput.value = '';
+      const tab = { comprar: els.tabComprar, ultima: els.tabUltima, casa: els.tabCasa }[existing.state] || els.tabCasa;
+      els.searchInput.value = existing.name;
+      searchQuery = existing.name;
+      activateTab(existing.state || 'casa', tab);
+      return;
+    }
     currentItems.unshift({
       id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
       name,
