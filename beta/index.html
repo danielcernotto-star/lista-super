@@ -1,0 +1,1786 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lista del Súper</title>
+<meta name="theme-color" content="#F7F4EC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161E1B" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="../icons/icon-apple-touch.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Súper">
+
+<!-- ===================== CONFIGURACIÓN ===================== -->
+<script>
+  window.APP_CONFIG = {
+    CLIENT_ID: "746f62ec-3d96-4603-8b89-2284ed4e9321",   // Application (client) ID de la app registrada en Entra
+    FOLDER_NAME: "ListaSuperFamiliar",     // carpeta en OneDrive donde vive el archivo
+    FILE_NAME: "lista.json",
+    VERSION: "3.0",
+    RELEASE_DATE: "04/11/2026"
+  };
+
+  // ---------- ENTORNOS ----------
+  // · Producción: la app normal, con la lista real.
+  // · Prueba (carpeta /beta/ o ?prueba): misma cuenta Microsoft, pero usa OTRO
+  //   archivo (ListaSuperFamiliar-Prueba/lista-prueba.json). Nunca toca la lista real.
+  // · Demo (?demo o DEMO:true): sin Microsoft, con datos de ejemplo guardados en el navegador.
+  (function(){
+    const C = window.APP_CONFIG;
+    const q = new URLSearchParams(location.search);
+    C.ENV = (C.DEMO || q.has('demo')) ? 'demo'
+          : (/\/beta\//.test(location.pathname) || q.has('prueba')) ? 'prueba'
+          : 'prod';
+    C.STORAGE_PREFIX = C.ENV === 'prod' ? 'ls_' : C.ENV === 'prueba' ? 'lsbeta_' : 'lsdemo_';
+    C.REAL_FOLDER = C.FOLDER_NAME; C.REAL_FILE = C.FILE_NAME;
+    if (C.ENV === 'prueba'){ C.FOLDER_NAME = 'ListaSuperFamiliar-Prueba'; C.FILE_NAME = 'lista-prueba.json'; }
+  })();
+</script>
+<!-- =========================================================== -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+
+<script src="https://unpkg.com/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
+
+<style>
+  /* ---------- TEMA: claro por defecto, oscuro si el celular está en modo oscuro ---------- */
+  :root{
+    --bg:#F7F4EC;
+    --surface:#FFFFFF;
+    --surface-2:#F1EDE3;
+    --text:#1F2A24;
+    --dim:#5A6660;
+    --line:#E2DCCF;
+    --accent:#2B7552;
+    --on-accent:#FFFFFF;
+    --accent-soft:#E2F0E8;
+    --accent-soft-text:#1E5A3E;
+    --blue-soft:#E3EBF6;
+    --blue-text:#2C527F;
+    --price:#8A5300;
+    --danger:#B4462F;
+    --danger-soft:#FBE9E5;
+    --shadow:0 1px 2px rgba(31,42,36,0.06), 0 4px 14px rgba(31,42,36,0.06);
+    --tab-active:#FFFFFF;
+    --radius:16px;
+    --safe-top:env(safe-area-inset-top);
+    --safe-bottom:env(safe-area-inset-bottom);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#161E1B;
+      --surface:#1F2925;
+      --surface-2:#26322D;
+      --text:#EEF0EC;
+      --dim:#A7B2AC;
+      --line:#33413A;
+      --accent:#6CC497;
+      --on-accent:#10241A;
+      --accent-soft:rgba(108,196,151,0.16);
+      --accent-soft-text:#9FDCBB;
+      --blue-soft:rgba(120,165,220,0.16);
+      --blue-text:#A9C6EA;
+      --price:#E6C278;
+      --danger:#F08A76;
+      --danger-soft:rgba(240,138,118,0.14);
+      --shadow:none;
+      --tab-active:#3A4B43;
+    }
+  }
+
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html{font-size:18px;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Atkinson Hyperlegible', system-ui, -apple-system, sans-serif;
+    line-height:1.4; overscroll-behavior-y:none;
+  }
+  #app{max-width:600px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column;}
+  h1,h2,h3{font-family:'Fraunces', Georgia, serif; font-weight:700; margin:0;}
+  button{font-family:inherit; color:inherit;}
+  input,select,textarea{font-family:inherit; font-size:1rem; color:var(--text);}
+
+  /* ---------- HEADER ---------- */
+  header{
+    padding:calc(14px + var(--safe-top)) 18px 8px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+  }
+  .brand h1{font-size:1.3rem; white-space:nowrap;}
+  .brand .sub{font-size:0.8rem; color:var(--dim);}
+  .brand .version{font-size:0.7rem; color:var(--dim); opacity:0.8;}
+  .who{display:flex; align-items:center; gap:8px;}
+  .avatar{
+    width:38px; height:38px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--accent); color:var(--on-accent); font-weight:700; font-size:1rem;
+  }
+  .icon-btn{
+    background:var(--surface); border:1px solid var(--line); color:var(--text);
+    width:44px; height:44px; border-radius:50%; font-size:1.15rem; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  /* ---------- SYNC ---------- */
+  .sync-strip{
+    margin:0 18px 8px; font-size:0.8rem; color:var(--dim);
+    display:flex; align-items:center; gap:8px;
+  }
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--accent); flex-shrink:0;}
+  .dot.syncing{background:var(--price); animation:pulse 1s infinite;}
+  .dot.error{background:var(--danger);}
+  .sync-strip.error{color:var(--danger); font-weight:700;}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:0.35;}}
+
+  /* ---------- BUSCAR / AGREGAR ---------- */
+  .search-row{
+    position:sticky; top:0; z-index:5; background:var(--bg);
+    padding:8px 18px 10px;
+  }
+  .search-box{position:relative;}
+  .search-box input{
+    width:100%; background:var(--surface); border:2px solid var(--line);
+    padding:14px 48px 14px 46px; border-radius:14px; font-size:1.05rem;
+    box-shadow:var(--shadow);
+  }
+  .search-box input:focus{outline:none; border-color:var(--accent);}
+  .search-box input::placeholder{color:var(--dim);}
+  .search-box input::-webkit-search-cancel-button{-webkit-appearance:none; display:none;}
+  .search-box .lupa{position:absolute; left:15px; top:50%; transform:translateY(-50%); font-size:1.1rem; pointer-events:none;}
+  .search-box .clear{
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    width:38px; height:38px; border-radius:50%; border:none; background:var(--surface-2);
+    font-size:1rem; cursor:pointer;
+  }
+
+  /* ---------- PESTAÑAS ---------- */
+  .tabs-row{display:flex; gap:6px; margin:0 18px 12px; background:var(--surface-2); padding:4px; border-radius:14px;}
+  .tab-btn{
+    flex:1; padding:11px 4px; border-radius:11px; border:none; background:transparent;
+    color:var(--dim); font-weight:700; font-size:0.85rem; cursor:pointer; line-height:1.2;
+  }
+  .tab-btn .n{display:block; font-size:1.1rem;}
+  .tab-btn.active{background:var(--tab-active); color:var(--text); box-shadow:var(--shadow);}
+
+  .total-bar{
+    margin:0 18px 12px; padding:12px 16px; border-radius:14px;
+    background:var(--accent-soft); color:var(--accent-soft-text);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .total-bar .label{font-size:0.85rem; font-weight:700;}
+  .total-bar .note{font-size:0.75rem; opacity:0.85;}
+  .total-bar .amount{font-family:'Fraunces',serif; font-weight:700; font-size:1.4rem;}
+
+  /* ---------- GATE ---------- */
+  .gate{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:32px 24px; gap:16px;}
+  .gate .mark{font-size:48px;}
+  .gate h2{font-size:1.4rem; max-width:340px; line-height:1.25;}
+  .gate p{color:var(--dim); max-width:340px; margin:0;}
+  .btn{
+    font-weight:700; font-size:1rem; padding:14px 22px; border-radius:999px; border:none; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:50px;
+  }
+  .btn-primary{background:var(--accent); color:var(--on-accent);}
+  .btn-ghost{background:var(--surface); color:var(--text); border:1px solid var(--line);}
+  .btn-danger{background:var(--danger-soft); color:var(--danger); border:1px solid transparent;}
+  .btn:active{transform:scale(0.97);}
+  .btn[disabled]{opacity:0.5; pointer-events:none;}
+  .btn-block{width:100%;}
+  .setup-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:20px; text-align:left; max-width:360px; width:100%; box-shadow:var(--shadow);
+  }
+  .field-label{display:block; font-size:0.8rem; color:var(--dim); font-weight:700; margin-bottom:6px;}
+  .field{
+    width:100%; margin-bottom:14px; background:var(--bg); border:1.5px solid var(--line);
+    padding:12px 14px; border-radius:12px;
+  }
+  .field:focus{outline:none; border-color:var(--accent);}
+
+  /* ---------- LISTA ---------- */
+  main{flex:1; padding:0 18px calc(30px + var(--safe-bottom));}
+  .cat-group{margin-bottom:18px;}
+  .cat-title{
+    font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em;
+    color:var(--dim); margin:0 0 6px 4px;
+  }
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden;}
+  .item-row{
+    display:flex; align-items:center; gap:12px; padding:12px 12px 12px 10px;
+    border-bottom:1px solid var(--line); min-height:68px;
+  }
+  .item-row:last-child{border-bottom:none;}
+  .check{
+    width:36px; height:36px; border-radius:10px; flex-shrink:0;
+    border:2px solid var(--dim); background:transparent; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:1.1rem; color:transparent;
+  }
+  .check.on{background:var(--accent); border-color:var(--accent); color:var(--on-accent);}
+  .check.plus{border-style:dashed; color:var(--dim); font-size:1.3rem;}
+  .item-info{flex:1; min-width:0; cursor:pointer;}
+  .item-name{font-size:1.05rem; font-weight:700; word-break:break-word;}
+  .item-meta{font-size:0.8rem; color:var(--dim); margin-top:2px;}
+  .item-price{font-size:0.85rem; color:var(--price); font-weight:700; margin-top:2px;}
+  .row-bottom{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px; flex-wrap:wrap;}
+  .row-bottom .item-price{margin-top:0;}
+  .edit-btn{
+    flex-shrink:0; width:40px; height:40px; border-radius:50%; border:none; background:transparent;
+    color:var(--dim); font-size:1.15rem; cursor:pointer;
+  }
+
+  .stepper{display:flex; align-items:center; flex-shrink:0; background:var(--surface-2); border-radius:999px;}
+  .stepper button{
+    width:40px; height:40px; border:none; background:transparent; font-size:1.3rem; font-weight:700;
+    cursor:pointer; color:var(--text); border-radius:50%;
+  }
+  .stepper button[disabled]{opacity:0.3;}
+  .stepper .q{min-width:26px; text-align:center; font-weight:700; font-size:1.05rem;}
+
+  .badge{
+    display:inline-block; font-size:0.72rem; font-weight:700; padding:2px 9px; border-radius:999px;
+    vertical-align:middle; margin-left:4px; white-space:nowrap;
+  }
+  .badge.comprar{background:var(--accent-soft); color:var(--accent-soft-text);}
+  .badge.ultima{background:var(--blue-soft); color:var(--blue-text);}
+  .badge.casa{background:var(--surface-2); color:var(--dim);}
+
+  .pill-btn{
+    flex-shrink:0; border:none; border-radius:999px; padding:10px 14px; min-height:44px;
+    background:var(--accent); color:var(--on-accent); font-weight:700; font-size:0.9rem; cursor:pointer;
+  }
+
+  .add-card{padding:16px; margin-bottom:14px;}
+  .add-card .title{font-size:1.05rem; margin-bottom:4px;}
+  .add-card .title b{word-break:break-word;}
+  .add-card .hint{font-size:0.85rem; color:var(--dim); margin-bottom:12px;}
+  .exists-note{
+    margin:0 0 12px; padding:10px 14px; border-radius:12px; font-size:0.9rem;
+    background:var(--accent-soft); color:var(--accent-soft-text); font-weight:700;
+  }
+  .results-title{font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--dim); margin:4px 4px 6px;}
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{
+    padding:9px 14px; border-radius:999px; font-size:0.85rem; font-weight:700; cursor:pointer;
+    border:1.5px solid var(--line); background:var(--bg); color:var(--text);
+  }
+  .chip.active{background:var(--accent); border-color:var(--accent); color:var(--on-accent);}
+
+  .empty-state{text-align:center; padding:50px 20px; color:var(--dim);}
+  .empty-state .mark{font-size:40px; display:block; margin-bottom:10px;}
+
+  .bulk-move-btn{
+    display:block; width:100%; margin:0 0 16px; padding:14px 16px; border-radius:14px;
+    border:1.5px solid var(--blue-text); background:var(--blue-soft); color:var(--blue-text);
+    font-weight:700; font-size:0.95rem; cursor:pointer;
+  }
+
+  /* ---------- MODALES ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; z-index:20; background:rgba(10,18,14,0.5);
+    display:flex; align-items:flex-end; justify-content:center; animation:fadein 0.15s ease;
+  }
+  .modal-box{
+    background:var(--surface); border-radius:22px 22px 0 0;
+    padding:22px 20px calc(22px + var(--safe-bottom)); width:100%; max-width:600px;
+    max-height:90vh; overflow-y:auto;
+  }
+  .modal-box h3{font-size:1.25rem; margin-bottom:12px;}
+  .modal-box p.intro{color:var(--dim); font-size:0.9rem; margin:0 0 14px;}
+  .stack{display:flex; flex-direction:column; gap:10px;}
+  @media (min-width:640px){ .modal-overlay{align-items:center;} .modal-box{border-radius:22px;} }
+  @keyframes fadein{from{opacity:0;} to{opacity:1;}}
+
+  .history{font-size:0.85rem; color:var(--dim); margin:-4px 0 14px;}
+  .history div{display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dashed var(--line);}
+
+  .price-review-row{background:var(--bg); border:1px solid var(--line); border-radius:14px; padding:12px;}
+  .price-review-row.off{opacity:0.5;}
+  .price-review-row .orig{font-size:0.85rem; font-weight:700; word-break:break-word;}
+  .price-review-row .matched{font-size:0.75rem; color:var(--accent-soft-text); background:var(--accent-soft); display:inline-block; padding:1px 8px; border-radius:999px; margin:4px 0 8px;}
+  .price-review-row .field{margin-bottom:8px; padding:10px 12px;}
+  .row-inline{display:flex; gap:10px; align-items:flex-start;}
+  .row-inline > div{flex:1;}
+  .price-review-row input[type=checkbox]{width:24px; height:24px; accent-color:var(--accent); flex-shrink:0; margin:0;}
+
+  .file-btn{
+    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:50px;
+    border:2px dashed var(--line); border-radius:14px; background:var(--bg); cursor:pointer;
+    font-weight:700; margin-bottom:12px;
+  }
+  textarea.field{font-family:ui-monospace, Menlo, monospace; font-size:0.8rem; resize:vertical;}
+
+  .toast{
+    position:fixed; left:50%; bottom:calc(24px + var(--safe-bottom)); transform:translateX(-50%);
+    background:var(--text); color:var(--bg); padding:12px 18px; border-radius:14px;
+    width:max-content; max-width:calc(100vw - 32px); text-align:center;
+    font-size:0.9rem; font-weight:700; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,0.25);
+    animation:fadein 0.2s ease;
+  }
+  .env-banner{
+    background:#C2410C; color:#FFFFFF; font-weight:700; font-size:0.85rem;
+    padding:calc(8px + var(--safe-top)) 16px 8px; text-align:center;
+    display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
+  }
+  .env-banner + #app header{padding-top:12px;}
+  .env-banner button{
+    background:rgba(255,255,255,0.18); color:#fff; border:1px solid rgba(255,255,255,0.5);
+    border-radius:999px; padding:6px 12px; font-weight:700; font-size:0.8rem; cursor:pointer;
+  }
+  .hidden{display:none !important;}
+  .spinner{width:22px; height:22px; border-radius:50%; border:3px solid var(--line); border-top-color:var(--accent); animation:spin 0.7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<div class="env-banner hidden" id="envBanner"></div>
+<div id="app">
+
+  <header>
+    <div class="brand">
+      <h1>🛒 Lista del Súper</h1>
+      <div class="sub" id="subLabel">sin conectar</div>
+      <div class="version" id="versionLabel"></div>
+    </div>
+    <div class="who hidden" id="whoBox">
+      <div class="avatar" id="avatarEl">D</div>
+      <button class="icon-btn" id="refreshBtn" title="Actualizar" aria-label="Actualizar">⟳</button>
+      <button class="icon-btn" id="menuBtn" title="Opciones" aria-label="Opciones">⋮</button>
+    </div>
+  </header>
+
+  <div class="sync-strip hidden" id="syncStrip">
+    <span class="dot" id="syncDot"></span>
+    <span id="syncText">Sincronizado</span>
+  </div>
+
+  <div class="search-row hidden" id="searchRow">
+    <div class="search-box">
+      <span class="lupa">🔎</span>
+      <input type="search" id="searchInput" placeholder="Buscar o agregar producto…" autocomplete="off" enterkeyhint="go">
+      <button class="clear hidden" id="searchClear" aria-label="Borrar búsqueda">✕</button>
+    </div>
+  </div>
+
+  <div class="tabs-row hidden" id="tabsRow">
+    <button class="tab-btn active" id="tabComprar" data-view="comprar"></button>
+    <button class="tab-btn" id="tabUltima" data-view="ultima"></button>
+    <button class="tab-btn" id="tabCasa" data-view="casa"></button>
+  </div>
+
+  <div class="total-bar hidden" id="totalBar"></div>
+
+  <!-- GATE: login / configuración inicial -->
+  <div class="gate" id="gate">
+    <div class="mark">🛒</div>
+    <h2 id="gateTitle">Cargando…</h2>
+    <p id="gateText">Un segundo, estamos revisando tu sesión de Microsoft.</p>
+    <div id="gateActions"></div>
+  </div>
+
+  <main class="hidden" id="main"></main>
+</div>
+
+<!-- Modal: editar producto -->
+<div class="modal-overlay hidden" id="editModal">
+  <div class="modal-box">
+    <h3>Editar producto</h3>
+    <label class="field-label" for="editName">Nombre</label>
+    <input class="field" id="editName" type="text" autocomplete="off">
+    <label class="field-label">Categoría</label>
+    <div class="chips" id="editCats" style="margin-bottom:16px;"></div>
+    <label class="field-label" for="editPrice">Último precio unitario ($)</label>
+    <input class="field" id="editPrice" type="number" inputmode="decimal" step="0.01" placeholder="Sin precio registrado">
+    <div class="history" id="editHistory"></div>
+    <div class="stack">
+      <button class="btn btn-primary btn-block" id="editSaveBtn">Guardar cambios</button>
+      <button class="btn btn-danger btn-block" id="editDeleteBtn">Eliminar del catálogo</button>
+      <button class="btn btn-ghost btn-block" data-close="editModal">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: menú (⋮) -->
+<div class="modal-overlay hidden" id="menuModal">
+  <div class="modal-box">
+    <h3>Opciones</h3>
+    <div class="stack">
+      <button class="btn btn-primary btn-block" id="menuPriceBtn">🧾 Actualizar precios con un ticket</button>
+      <button class="btn btn-ghost btn-block" id="menuShareBtn">Compartir lista con alguien</button>
+      <button class="btn btn-danger btn-block" id="menuLogoutBtn">Cerrar sesión en este dispositivo</button>
+      <button class="btn btn-ghost btn-block" data-close="menuModal">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: importar precios de un ticket -->
+<div class="modal-overlay hidden" id="priceModal">
+  <div class="modal-box">
+    <h3>Actualizar precios</h3>
+
+    <div id="priceStepPaste">
+      <p class="intro">Subí el PDF del ticket (por ejemplo, el que genera Adobe Scan) o pegá el texto. Se actualizan el precio, la cantidad y la fecha de cada producto. No cambia en qué lista está cada uno.</p>
+      <label class="file-btn">📄 Subir PDF o .txt del ticket
+        <input type="file" id="priceFile" accept="application/pdf,.pdf,text/plain,.txt" class="hidden">
+      </label>
+      <label class="field-label" for="priceRawText">…o pegá el texto acá</label>
+      <textarea class="field" id="priceRawText" rows="8" placeholder="3 | PEDRIN PAPAS FRITAS X70GR | $ 1.985,00 | $ 5.955,00"></textarea>
+      <div class="stack">
+        <button class="btn btn-primary btn-block" id="priceAnalyzeBtn">Analizar ticket</button>
+        <button class="btn btn-ghost btn-block" data-close="priceModal">Cancelar</button>
+      </div>
+    </div>
+
+    <div id="priceStepReview" class="hidden">
+      <p class="intro" id="priceReviewIntro"></p>
+      <div id="priceReviewList" class="stack" style="gap:12px; margin-bottom:16px;"></div>
+      <div class="stack">
+        <button class="btn btn-primary btn-block" id="priceSaveBtn">Guardar precios</button>
+        <button class="btn btn-ghost btn-block" id="priceBackBtn">← Volver</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: confirmación -->
+<div class="modal-overlay hidden" id="confirmModal">
+  <div class="modal-box">
+    <h3 id="confirmTitle">¿Seguro?</h3>
+    <p class="intro" id="confirmText" style="white-space:pre-line;"></p>
+    <div class="stack">
+      <button class="btn btn-primary btn-block" id="confirmOk">Aceptar</button>
+      <button class="btn btn-ghost btn-block" id="confirmCancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: compartir -->
+<div class="modal-overlay hidden" id="shareModal">
+  <div class="modal-box">
+    <h3>Compartir la lista</h3>
+    <p class="intro" id="shareModalIntro">Escribí el mail de la cuenta Microsoft de la persona. Va a poder ver y editar la lista.</p>
+    <div id="shareModalForm">
+      <label class="field-label" for="shareModalEmail">Email de la cuenta Microsoft</label>
+      <input class="field" id="shareModalEmail" type="email" placeholder="mari@outlook.com">
+      <div class="stack">
+        <button class="btn btn-primary btn-block" id="shareModalBtn">Compartir acceso</button>
+        <button class="btn btn-ghost btn-block" data-close="shareModal">Cancelar</button>
+      </div>
+    </div>
+    <div id="shareModalResult" class="hidden"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const CFG = window.APP_CONFIG;
+  const CATEGORIES = ["Almacén","Bebidas","Carnicería","Lácteos","Limpieza","Panadería","Perfumería","Verdulería","Otros"];
+  const VIEW_LABELS = { comprar: 'Para comprar', ultima: 'Últ. compra', casa: 'Lista Gral' };
+
+  // Sugerencia automática de categoría al crear un producto nuevo (se puede cambiar)
+  const CATEGORY_HINTS = {
+    'Lácteos': ['leche','yogur','yogurt','queso','manteca','crema','dulce de leche','ricota','casancrem'],
+    'Carnicería': ['carne','pollo','milanesa','pechuga','bife','asado','picada','cerdo','chorizo','hamburguesa','jamon','salame','fiambre'],
+    'Panadería': ['pan','factura','galleta','tostada','prepizza','medialuna','grisin'],
+    'Verdulería': ['tomate','papa','cebolla','lechuga','zanahoria','banana','manzana','naranja','limon','zapallo','ajo','palta','fruta','verdura','morron','pera','frutilla','huevo'],
+    'Bebidas': ['agua','gaseosa','coca','sprite','vino','cerveza','jugo','soda','fernet','aperitivo'],
+    'Limpieza': ['lavandina','detergente','esponja','trapo','limpiador','suavizante','jabon en polvo','bolsas de residuo','cif','mr musculo','desodorante de ambiente','insecticida'],
+    'Perfumería': ['shampoo','acondicionador','jabon','pasta dental','cepillo','desodorante','papel higienico','toallitas','algodon','crema de enjuague'],
+    'Almacén': ['arroz','fideo','harina','azucar','aceite','sal','yerba','cafe','te','mate cocido','pure','salsa','atun','lenteja','galletita','mermelada','mayonesa','ketchup','vinagre','cacao','avena','polenta']
+  };
+
+  let currentView = 'comprar';
+  let searchQuery = '';
+  let addCategory = null;      // categoría elegida en la tarjeta "Agregar"
+  let currentItems = [];
+  let saving = false;
+  let pendingSave = false;
+
+  // ---------- Config incompleta ----------
+  if (!CFG.CLIENT_ID || CFG.CLIENT_ID.includes("PEGA_AQUI")) {
+    document.getElementById('gateTitle').textContent = "Falta un paso de configuración";
+    document.getElementById('gateText').innerHTML = "Todavía no completaste el <b>CLIENT_ID</b> en index.html. Seguí el README.md.";
+    return;
+  }
+
+  // ---------- MSAL ----------
+  const msalConfig = {
+    auth: {
+      clientId: CFG.CLIENT_ID,
+      authority: "https://login.microsoftonline.com/consumers",
+      redirectUri: window.location.origin + window.location.pathname
+    },
+    cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
+  };
+  const DEMO = CFG.ENV === 'demo';
+  const msalInstance = DEMO ? null : new msal.PublicClientApplication(msalConfig);
+  const SCOPES = ["User.Read", "Files.ReadWrite"];
+
+  // localStorage con prefijo por entorno: prueba y demo nunca leen ni pisan
+  // la configuración de la app real (rol, archivo compartido, etc.).
+  const store = {
+    get(k){ try{ return localStorage.getItem(CFG.STORAGE_PREFIX + k); }catch(e){ return null; } },
+    set(k, v){ try{ localStorage.setItem(CFG.STORAGE_PREFIX + k, v); }catch(e){} },
+    clearMine(){
+      try{ Object.keys(localStorage).filter(k => k.startsWith(CFG.STORAGE_PREFIX)).forEach(k => localStorage.removeItem(k)); }catch(e){}
+    }
+  };
+
+  let account = null;
+  let role = store.get('role'); // 'owner' | 'guest' | null
+  let guestDriveId = store.get('guestDriveId');
+  let guestItemId = store.get('guestItemId');
+
+  // ---------- DEMO: un "OneDrive" falso dentro del navegador ----------
+  function demoSeed(){
+    const d = (days) => new Date(Date.now() - days * 86400000).toISOString();
+    const mk = (name, category, state, extra) => Object.assign({
+      id: newId(), name, category, state, qty: 1, addedBy: 'Daniel', addedAt: d(40), updatedAt: d(10)
+    }, extra || {});
+    return { deleted: [], items: [
+      mk('Leche entera', 'Lácteos', 'comprar', { qty: 2, requestedBy: 'Mari Negri', lastPrice: 1650, lastPriceDate: d(9), lastPurchasedAt: d(9), lastQty: 2,
+        priceHistory: [{ date: d(40), price: 1490, qty: 2 }, { date: d(23), price: 1580, qty: 3 }, { date: d(9), price: 1650, qty: 2 }],
+        ticketAliases: ['serenisima leche entera 1l'] }),
+      mk('Yerba Playadito', 'Almacén', 'comprar', { requestedBy: 'Daniel', lastPrice: 4500, lastPriceDate: d(9), lastQty: 1, ticketAliases: ['yerba playadito 1kg'] }),
+      mk('Lavandina', 'Limpieza', 'comprar', { requestedBy: 'Mari Negri' }),
+      mk('Tomate perita', 'Verdulería', 'comprar', { qty: 3, requestedBy: 'Mari Negri', lastPrice: 2200, lastPriceDate: d(16) }),
+      mk('Papas fritas Pedrin', 'Almacén', 'ultima', { lastPurchasedAt: d(1), lastQty: 3, lastPrice: 1985, lastPriceDate: d(1), ticketAliases: ['pedrin papas fritas x70gr'] }),
+      mk('Pan lactal', 'Panadería', 'ultima', { lastPurchasedAt: d(1), lastQty: 1, lastPrice: 2900, lastPriceDate: d(1) }),
+      mk('Arroz largo fino', 'Almacén', 'casa', { lastPrice: 1350, lastPriceDate: d(23) }),
+      mk('Fideos tirabuzón', 'Almacén', 'casa', { lastPrice: 1100, lastPriceDate: d(23) }),
+      mk('Aceite de girasol', 'Almacén', 'casa'),
+      mk('Queso cremoso', 'Lácteos', 'casa', { lastPrice: 8900, lastPriceDate: d(30) }),
+      mk('Yogur bebible', 'Lácteos', 'casa'),
+      mk('Pechuga de pollo', 'Carnicería', 'casa', { lastPrice: 6500, lastPriceDate: d(16) }),
+      mk('Detergente', 'Limpieza', 'casa'),
+      mk('Papel higiénico', 'Perfumería', 'casa', { lastPrice: 5200, lastPriceDate: d(30) }),
+      mk('Banana', 'Verdulería', 'casa'),
+      mk('Agua mineral', 'Bebidas', 'casa', { lastPrice: 1200, lastPriceDate: d(9) }),
+    ]};
+  }
+  let demoMemory = null;
+  function demoLoad(){
+    if (demoMemory) return demoMemory;
+    try{ const s = localStorage.getItem('lsdemo_data'); if (s) return (demoMemory = JSON.parse(s)); }catch(e){}
+    return (demoMemory = demoSeed());
+  }
+  function demoGraph(path, opts){
+    const json = (obj) => new Response(JSON.stringify(obj), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if ((opts.method || 'GET') === 'PUT'){
+      demoMemory = JSON.parse(opts.body);
+      try{ localStorage.setItem('lsdemo_data', opts.body); }catch(e){}
+      return Promise.resolve(json({ id: 'demo' }));
+    }
+    if (path.endsWith('/content')) return Promise.resolve(json(JSON.parse(JSON.stringify(demoLoad()))));
+    return Promise.resolve(json({ id: 'demo' }));
+  }
+  function demoReset(){
+    demoMemory = demoSeed();
+    try{ localStorage.setItem('lsdemo_data', JSON.stringify(demoMemory)); }catch(e){}
+    loadItems();
+    showToast('Datos de ejemplo restaurados ✓');
+  }
+
+  // ---------- Confirmación propia (los confirm() del navegador no andan en todos lados) ----------
+  function askConfirm(text, okLabel, title){
+    return new Promise(resolve => {
+      document.getElementById('confirmTitle').textContent = title || '¿Seguro?';
+      document.getElementById('confirmText').textContent = text;
+      const ok = document.getElementById('confirmOk'), cancel = document.getElementById('confirmCancel');
+      const modal = document.getElementById('confirmModal');
+      ok.textContent = okLabel || 'Aceptar';
+      const done = (v) => { modal.classList.add('hidden'); ok.onclick = cancel.onclick = null; resolve(v); };
+      ok.onclick = () => done(true);
+      cancel.onclick = () => done(false);
+      modal.classList.remove('hidden');
+    });
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    gate: $('gate'), gateTitle: $('gateTitle'), gateText: $('gateText'), gateActions: $('gateActions'),
+    main: $('main'), whoBox: $('whoBox'), avatarEl: $('avatarEl'), subLabel: $('subLabel'),
+    syncStrip: $('syncStrip'), syncDot: $('syncDot'), syncText: $('syncText'),
+    menuBtn: $('menuBtn'), refreshBtn: $('refreshBtn'), versionLabel: $('versionLabel'),
+    tabsRow: $('tabsRow'), tabComprar: $('tabComprar'), tabUltima: $('tabUltima'), tabCasa: $('tabCasa'),
+    searchRow: $('searchRow'), searchInput: $('searchInput'), searchClear: $('searchClear'),
+    totalBar: $('totalBar'),
+  };
+  els.versionLabel.textContent = `v${CFG.VERSION} · ${CFG.RELEASE_DATE}`;
+
+  function showToast(msg, ms){
+    document.querySelectorAll('.toast').forEach(t => t.remove());
+    const t = document.createElement('div');
+    t.className = 'toast'; t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), ms || 2400);
+  }
+
+  // ---------- Helpers ----------
+  // Nombre normalizado: sin mayúsculas, acentos, signos ni espacios repetidos.
+  function normName(s){
+    return String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  function findByName(name, exceptId){
+    const key = normName(name);
+    return key ? currentItems.find(i => i.id !== exceptId && normName(i.name) === key) : null;
+  }
+  function firstName(full){ return String(full || '').trim().split(/\s+/)[0] || ''; }
+  function formatDate(iso){
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' });
+  }
+  function formatMoney(n){
+    return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+  }
+  function formatQty(q){
+    const n = Number(q) || 1;
+    return Number.isInteger(n) ? String(n) : n.toLocaleString('es-AR', { maximumFractionDigits: 3 });
+  }
+  function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+  function newId(){ return crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(); }
+  function who(){ return account.name || account.username; }
+  // Toda modificación marca updatedAt, así la mezcla con OneDrive se queda con el cambio más nuevo.
+  function touch(it){ it.updatedAt = new Date().toISOString(); it.updatedBy = who(); }
+  function guessCategory(name){
+    const n = ' ' + normName(name) + ' ';
+    for (const [cat, words] of Object.entries(CATEGORY_HINTS)){
+      if (words.some(w => n.includes(' ' + w))) return cat;
+    }
+    return 'Otros';
+  }
+
+  function setSync(state, text){
+    els.syncStrip.classList.remove('hidden');
+    els.syncStrip.classList.toggle('error', state === 'error');
+    els.syncDot.className = 'dot' + (state === 'syncing' ? ' syncing' : state === 'error' ? ' error' : '');
+    els.syncText.textContent = text;
+  }
+
+  async function getToken(){
+    try{
+      const res = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account });
+      return res.accessToken;
+    }catch(e){
+      const res = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
+      account = res.account;
+      return res.accessToken;
+    }
+  }
+
+  async function graph(path, opts = {}){
+    if (DEMO) return demoGraph(path, opts);
+    const token = await getToken();
+    return fetch(`https://graph.microsoft.com/v1.0${path}`, {
+      ...opts,
+      headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) }
+    });
+  }
+
+  // ---------- Init ----------
+  function renderEnvBanner(){
+    const b = $('envBanner');
+    if (CFG.ENV === 'prod') return;
+    if (CFG.ENV === 'demo'){
+      b.innerHTML = '🧪 MODO DEMO · datos de ejemplo, no toca tu lista real <button id="demoResetBtn">Reiniciar datos</button>';
+    } else {
+      b.innerHTML = '🧪 ENTORNO DE PRUEBA · usa la lista de prueba, no la real' +
+        (role === 'owner' ? ' <button id="copyRealBtn">Copiar lista real</button>' : '');
+    }
+    b.classList.remove('hidden');
+    const r = $('demoResetBtn'); if (r) r.onclick = async () => { if (await askConfirm('Se borran tus cambios de prueba y vuelven los datos de ejemplo.', 'Reiniciar')) demoReset(); };
+    const c = $('copyRealBtn'); if (c) c.onclick = copyRealIntoTest;
+  }
+
+  // Solo en PRUEBA: trae una copia de la lista real (solo lectura) al archivo de prueba.
+  async function copyRealIntoTest(){
+    if (!(await askConfirm('Se reemplaza la lista de PRUEBA con una copia de la lista real. La lista real no se modifica.', 'Copiar'))) return;
+    try{
+      const res = await graph(`/me/drive/root:/${CFG.REAL_FOLDER}/${CFG.REAL_FILE}:/content`);
+      if (!res.ok) throw new Error('No se pudo leer la lista real');
+      const data = await res.json();
+      const put = await graph(contentPath(), { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+      if (!put.ok) throw new Error('No se pudo escribir la lista de prueba');
+      await loadItems();
+      showToast(`Copiados ${(data.items || []).length} productos a la lista de prueba ✓`, 3000);
+    }catch(e){
+      console.error(e); showToast('No se pudo copiar: ' + e.message, 4000);
+    }
+  }
+
+  async function init(){
+    if (DEMO){
+      account = { name: 'Daniel (demo)', username: 'demo' };
+      role = 'owner'; ownerItemId = 'demo';
+      renderEnvBanner();
+      els.whoBox.classList.remove('hidden');
+      els.avatarEl.textContent = 'D';
+      els.subLabel.textContent = 'Modo demo';
+      showApp(); startPolling();
+      return;
+    }
+    await msalInstance.initialize();
+    await msalInstance.handleRedirectPromise().catch(()=>null);
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0){
+      account = accounts[0];
+      await afterLogin();
+    } else {
+      renderLoggedOutGate();
+    }
+  }
+
+  function renderLoggedOutGate(){
+    els.gateTitle.textContent = "La lista de compras de la familia";
+    els.gateText.textContent = "Iniciá sesión con tu cuenta de Microsoft para ver y editar la lista compartida.";
+    els.gateActions.innerHTML = '<button class="btn btn-primary" id="loginBtn">Iniciar sesión con Microsoft</button>';
+    $('loginBtn').onclick = doLogin;
+  }
+
+  async function doLogin(){
+    try{
+      const res = await msalInstance.loginPopup({ scopes: SCOPES });
+      account = res.account;
+      await afterLogin();
+    }catch(e){
+      showToast("No se pudo iniciar sesión");
+      console.error(e);
+    }
+  }
+
+  async function afterLogin(){
+    els.whoBox.classList.remove('hidden');
+    els.avatarEl.textContent = (account.name || account.username || "?").trim()[0].toUpperCase();
+    els.subLabel.textContent = account.name || account.username;
+    renderEnvBanner();
+    if (!role){ renderRoleChoice(); return; }
+    if (role === 'owner') await ensureOwnerFile();
+    else await ensureGuestFile();
+  }
+
+  function renderRoleChoice(){
+    els.gateTitle.textContent = "¿Cómo vas a usar la app?";
+    els.gateText.textContent = "Elegí una opción. Solo se pregunta una vez por dispositivo.";
+    els.gateActions.innerHTML = `
+      <div class="stack" style="margin-top:6px;">
+        <button class="btn btn-primary" id="ownerBtn">Soy quien creó la lista (dueño del archivo)</button>
+        <button class="btn btn-ghost" id="guestBtn">Me compartieron la lista</button>
+      </div>`;
+    $('ownerBtn').onclick = () => { role='owner'; store.set('role','owner'); renderEnvBanner(); ensureOwnerFile(); };
+    $('guestBtn').onclick = () => { role='guest'; store.set('role','guest'); renderEnvBanner(); ensureGuestFile(); };
+  }
+
+  function gateSpinner(title){
+    els.gateTitle.textContent = title;
+    els.gateText.textContent = "";
+    els.gateActions.innerHTML = '<div class="spinner"></div>';
+  }
+
+  // ---------- OWNER ----------
+  let ownerItemId = null;
+  async function ensureOwnerFile(){
+    gateSpinner("Preparando tu lista…");
+    let folderRes = await graph(`/me/drive/root:/${CFG.FOLDER_NAME}`);
+    if (folderRes.status === 404){
+      await graph(`/me/drive/root/children`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name: CFG.FOLDER_NAME, folder: {}, "@microsoft.graph.conflictBehavior":"rename" })
+      });
+    }
+    let fileRes = await graph(`/me/drive/root:/${CFG.FOLDER_NAME}/${CFG.FILE_NAME}`);
+    if (fileRes.status === 404){
+      const createRes = await graph(`/me/drive/root:/${CFG.FOLDER_NAME}/${CFG.FILE_NAME}:/content`, {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ items: [] })
+      });
+      ownerItemId = (await createRes.json()).id;
+    } else if (fileRes.ok){
+      ownerItemId = (await fileRes.json()).id;
+    } else {
+      showFatal("No pudimos crear el archivo en OneDrive. Revisá los permisos en el README.");
+      return;
+    }
+    if (!store.get('sharedDone')) renderShareStep();
+    else { showApp(); startPolling(); }
+  }
+
+  function renderShareStep(){
+    els.gateTitle.textContent = "Compartila con tu familia";
+    els.gateText.textContent = "Escribí el mail de la cuenta Microsoft de la otra persona para darle acceso de edición.";
+    els.gateActions.innerHTML = `
+      <div class="setup-card">
+        <label class="field-label">Email de la cuenta Microsoft</label>
+        <input class="field" id="shareEmail" type="email" placeholder="mari@outlook.com">
+        <button class="btn btn-primary btn-block" id="shareBtn">Compartir acceso</button>
+        <div style="text-align:center; margin-top:10px;">
+          <button style="background:none;border:none;color:var(--dim);font-size:0.85rem;cursor:pointer;padding:10px;" id="skipShare">Ya la compartí antes, continuar →</button>
+        </div>
+      </div>`;
+    $('shareBtn').onclick = doShare;
+    $('skipShare').onclick = () => { store.set('sharedDone','1'); showApp(); startPolling(); };
+  }
+
+  async function inviteEmail(email, itemId){
+    return graph(`/me/drive/items/${itemId}/invite`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        recipients: [{ email }], message: "Te comparto nuestra lista del súper 🛒",
+        requireSignIn: true, sendInvitation: true, roles: ["write"]
+      })
+    });
+  }
+
+  async function createShareLink(itemId){
+    const res = await graph(`/me/drive/items/${itemId}/createLink`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ type: 'edit', scope: 'anonymous' })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.link ? data.link.webUrl : null;
+  }
+
+  async function copyToClipboard(text){
+    try{ await navigator.clipboard.writeText(text); return true; }
+    catch(e){
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand('copy'); ta.remove(); return true; }
+      catch(e2){ ta.remove(); return false; }
+    }
+  }
+
+  function shareLinkResultHtml(link){
+    return `
+      <div class="setup-card" style="margin-top:14px;">
+        <label class="field-label">Mandale este link por WhatsApp</label>
+        <div style="background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:11px 12px; font-size:0.8rem; word-break:break-all; margin:0 0 12px; color:var(--dim);">${escapeHtml(link)}</div>
+        <p style="font-size:0.85rem; color:var(--dim); margin:0 0 12px;">La otra persona debe abrir la app (no el link directo) y pegarlo en «Me compartieron la lista».</p>
+        <button class="btn btn-primary btn-block" id="copyLinkBtn">Copiar link</button>
+      </div>`;
+  }
+
+  async function doShare(){
+    const email = $('shareEmail').value.trim();
+    if (!email){ showToast("Ingresá un email"); return; }
+    const btn = $('shareBtn');
+    btn.disabled = true; btn.textContent = "Compartiendo…";
+    try{
+      const res = await inviteEmail(email, ownerItemId);
+      if (res.ok){
+        store.set('sharedDone','1');
+        const link = await createShareLink(ownerItemId);
+        if (link){
+          els.gateTitle.textContent = "¡Compartido!";
+          els.gateText.textContent = "Un último paso: mandale este link a la otra persona.";
+          els.gateActions.innerHTML = shareLinkResultHtml(link) +
+            `<button class="btn btn-ghost btn-block" id="continueAfterShareBtn" style="margin-top:10px;">Continuar a la lista →</button>`;
+          $('copyLinkBtn').onclick = async () => {
+            const ok = await copyToClipboard(link);
+            showToast(ok ? "Link copiado ✓" : "No se pudo copiar, seleccionalo a mano");
+          };
+          $('continueAfterShareBtn').onclick = () => { showApp(); startPolling(); };
+        } else {
+          showToast("Compartido ✓"); showApp(); startPolling();
+        }
+      } else {
+        console.error(await res.json().catch(()=>({})));
+        showToast("No se pudo compartir. Revisá el mail.");
+        btn.disabled = false; btn.textContent = "Compartir acceso";
+      }
+    }catch(e){
+      showToast("Error al compartir");
+      btn.disabled = false; btn.textContent = "Compartir acceso";
+    }
+  }
+
+  // ---------- GUEST ----------
+  async function ensureGuestFile(){
+    if (guestDriveId && guestItemId){ showApp(); startPolling(); return; }
+    gateSpinner("Buscando la lista compartida…");
+    const res = await graph(`/me/drive/sharedWithMe`);
+    if (!res.ok){ showFatal("No pudimos consultar OneDrive."); return; }
+    const data = await res.json();
+    const match = (data.value || []).find(it => it.name === CFG.FILE_NAME);
+    if (match){
+      guestDriveId = match.remoteItem.parentReference.driveId;
+      guestItemId = match.remoteItem.id;
+      store.set('guestDriveId', guestDriveId);
+      store.set('guestItemId', guestItemId);
+      showApp(); startPolling();
+    } else {
+      renderManualLinkStep();
+    }
+  }
+
+  function renderManualLinkStep(){
+    els.gateTitle.textContent = "Pegá el link que te compartieron";
+    els.gateText.textContent = "Quien creó la lista te tuvo que pasar un link por WhatsApp. Pegalo acá abajo (no hace falta abrirlo).";
+    els.gateActions.innerHTML = `
+      <div class="setup-card">
+        <label class="field-label">Link que te compartieron</label>
+        <input class="field" id="shareLink" type="text" placeholder="https://1drv.ms/...">
+        <div class="stack">
+          <button class="btn btn-primary btn-block" id="resolveLinkBtn">Conectar con este link</button>
+          <button class="btn btn-ghost btn-block" id="retryBtn">Reintentar búsqueda automática</button>
+        </div>
+      </div>`;
+    $('retryBtn').onclick = ensureGuestFile;
+    $('resolveLinkBtn').onclick = resolveShareLink;
+  }
+
+  async function resolveShareLink(){
+    const link = $('shareLink').value.trim();
+    if (!link){ showToast("Pegá un link"); return; }
+    const encoded = 'u!' + btoa(link).replace(/=+$/,'').replace(/\//g,'_').replace(/\+/g,'-');
+    const res = await graph(`/shares/${encoded}/driveItem?$select=id,parentReference`);
+    if (!res.ok){ showToast("El link no es válido"); return; }
+    const data = await res.json();
+    guestDriveId = data.parentReference.driveId;
+    guestItemId = data.id;
+    store.set('guestDriveId', guestDriveId);
+    store.set('guestItemId', guestItemId);
+    showToast("Conectado ✓"); showApp(); startPolling();
+  }
+
+  function showFatal(msg){
+    els.gateTitle.textContent = "Algo salió mal";
+    els.gateText.textContent = msg;
+    els.gateActions.innerHTML = '<button class="btn btn-ghost" onclick="location.reload()">Reintentar</button>';
+  }
+
+  // ---------- Contenido: leer / escribir ----------
+  function contentPath(){
+    if (role === 'owner') return `/me/drive/items/${ownerItemId}/content`;
+    return `/drives/${guestDriveId}/items/${guestItemId}/content`;
+  }
+
+  function migrateItems(items){
+    return (items || []).map(it => ({
+      ...it,
+      state: it.state || (it.checked ? 'casa' : 'comprar'),
+      qty: Number(it.qty) > 0 ? Number(it.qty) : 1
+    }));
+  }
+
+  // ---------- Borrados (para que la mezcla no "resucite" productos) ----------
+  let deletedIds = [];
+  const DELETED_KEEP_DAYS = 180;
+  function pruneDeleted(list){
+    const limit = Date.now() - DELETED_KEEP_DAYS * 86400000;
+    return (list || []).filter(d => d && d.id && new Date(d.at || 0).getTime() >= limit);
+  }
+  function mergeDeleted(remote, local){
+    const byId = new Map();
+    pruneDeleted(remote).concat(pruneDeleted(local)).forEach(d => byId.set(d.id, d));
+    return Array.from(byId.values());
+  }
+  function dropDeleted(items, deleted){
+    const gone = new Set(deleted.map(d => d.id));
+    return items.filter(i => !gone.has(i.id));
+  }
+
+  let dupWarned = false;
+  function warnDuplicates(){
+    if (dupWarned) return;
+    const seen = new Map(); const dups = [];
+    currentItems.forEach(i => {
+      const k = normName(i.name);
+      if (!k) return;
+      if (seen.has(k)) { if (!dups.includes(seen.get(k))) dups.push(seen.get(k)); }
+      else seen.set(k, i.name);
+    });
+    if (dups.length === 0) return;
+    dupWarned = true;
+    const sample = dups.slice(0, 3).join(', ') + (dups.length > 3 ? '…' : '');
+    showToast(`⚠ Hay ${dups.length} producto(s) repetido(s): ${sample}. Buscalos y eliminá el que sobre con ✎.`, 6500);
+  }
+
+  async function loadItems(){
+    setSync('syncing', 'Sincronizando…');
+    try{
+      const res = await graph(contentPath());
+      if (!res.ok) throw new Error('read failed');
+      const data = await res.json();
+      deletedIds = pruneDeleted(data.deleted);
+      currentItems = dropDeleted(migrateItems(data.items), deletedIds);
+      warnDuplicates();
+      render();
+      setSync('ok', 'Sincronizado · ' + new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'}));
+    }catch(e){
+      console.error(e);
+      setSync('error', 'No se pudo sincronizar. Tocá ⟳ para reintentar.');
+    }
+  }
+
+  async function saveItems(){
+    if (saving){ pendingSave = true; return; }
+    saving = true;
+    setSync('syncing', 'Guardando…');
+    try{
+      // Siempre leemos OneDrive y mezclamos antes de escribir, para no pisar
+      // cambios del otro celular ni el archivo con una copia incompleta.
+      const remoteRes = await graph(contentPath());
+      if (!remoteRes.ok) throw new Error('No se pudo leer el estado remoto antes de guardar');
+      const remoteData = await remoteRes.json();
+      deletedIds = mergeDeleted(remoteData.deleted, deletedIds);
+      currentItems = dropDeleted(mergeItems(migrateItems(remoteData.items), currentItems), deletedIds);
+
+      const putRes = await graph(contentPath(), {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ items: currentItems, deleted: deletedIds })
+      });
+      if (!putRes.ok) throw new Error('write failed');
+      render();
+      setSync('ok', 'Guardado · ' + new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'}));
+    }catch(e){
+      console.error(e);
+      setSync('error', 'No se pudo guardar. Tocá ⟳ para reintentar.');
+    }finally{
+      saving = false;
+      if (pendingSave){ pendingSave = false; saveItems(); }
+    }
+  }
+
+  function mergeItems(remote, local){
+    const byId = new Map();
+    remote.forEach(it => byId.set(it.id, it));
+    local.forEach(it => {
+      const r = byId.get(it.id);
+      if (!r) { byId.set(it.id, it); return; }
+      const rTime = new Date(r.updatedAt || r.addedAt || 0).getTime();
+      const lTime = new Date(it.updatedAt || it.addedAt || 0).getTime();
+      byId.set(it.id, lTime >= rTime ? it : r);
+    });
+    return Array.from(byId.values());
+  }
+
+  function startPolling(){ loadItems(); }
+
+  // Al volver a la app (por ej. desde WhatsApp), traemos lo último de OneDrive.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && account && !els.main.classList.contains('hidden') && !saving && !pendingSave){
+      loadItems();
+    }
+  });
+
+  // ---------- UI ----------
+  function showApp(){
+    els.gate.classList.add('hidden');
+    els.main.classList.remove('hidden');
+    els.tabsRow.classList.remove('hidden');
+    els.searchRow.classList.remove('hidden');
+    els.totalBar.classList.remove('hidden');
+  }
+
+  function lastPurchaseISO(it){
+    const dates = [it.lastPurchasedAt, it.lastPriceDate].filter(Boolean)
+      .map(d => new Date(d)).filter(d => !isNaN(d));
+    if (dates.length === 0) return null;
+    return new Date(Math.max(...dates)).toISOString();
+  }
+
+  function metaText(it, { withState } = {}){
+    const parts = [];
+    if (withState) parts.push(it.category || 'Otros');
+    if (it.state === 'comprar' || it.state === 'ultima'){
+      const requester = it.requestedBy || (it.state === 'comprar' ? it.updatedBy : '');
+      if (requester) parts.push('pidió ' + firstName(requester));
+    }
+    const last = lastPurchaseISO(it);
+    if (last) parts.push('últ. compra ' + formatDate(last) + (it.lastQty ? ` (x${formatQty(it.lastQty)})` : ''));
+    return parts.join(' · ');
+  }
+
+  function priceText(it){
+    if (typeof it.lastPrice !== 'number') return '';
+    const q = Number(it.qty) || 1;
+    if (it.state === 'comprar' && q !== 1){
+      return `${formatMoney(it.lastPrice)} c/u · ${formatMoney(it.lastPrice * q)}`;
+    }
+    return formatMoney(it.lastPrice) + (it.lastPriceDate ? ` · ${formatDate(it.lastPriceDate)}` : '');
+  }
+
+  function stepperHtml(it){
+    const q = Number(it.qty) || 1;
+    return `<div class="stepper">
+      <button data-action="qty-dec" data-id="${it.id}" aria-label="Menos" ${q <= 1 ? 'disabled' : ''}>−</button>
+      <span class="q">${formatQty(q)}</span>
+      <button data-action="qty-inc" data-id="${it.id}" aria-label="Más">+</button>
+    </div>`;
+  }
+
+  // Fila de una sublista
+  function itemRowHtml(it){
+    const price = priceText(it);
+    let checkCls = 'check', checkLabel = '';
+    if (it.state === 'comprar'){ checkLabel = 'Marcar como comprado'; }
+    if (it.state === 'ultima'){ checkCls += ' on'; checkLabel = 'Pasar a Lista Gral'; }
+    if (it.state === 'casa'){ checkCls += ' plus'; checkLabel = 'Agregar a Para comprar'; }
+    return `<div class="item-row" data-id="${it.id}">
+      <button class="${checkCls}" data-action="toggle" data-id="${it.id}" aria-label="${checkLabel}">${it.state === 'casa' ? '+' : '✓'}</button>
+      <div class="item-info">
+        <div data-action="toggle" data-id="${it.id}">
+          <div class="item-name">${escapeHtml(it.name)}</div>
+          ${metaText(it) ? `<div class="item-meta">${escapeHtml(metaText(it))}</div>` : ''}
+        </div>
+        ${it.state === 'comprar'
+          ? `<div class="row-bottom">${stepperHtml(it)}${price ? `<div class="item-price">${escapeHtml(price)}</div>` : ''}</div>`
+          : (price ? `<div class="item-price" data-action="toggle" data-id="${it.id}">${escapeHtml(price)}</div>` : '')}
+      </div>
+      <button class="edit-btn" data-action="edit" data-id="${it.id}" aria-label="Editar">✎</button>
+    </div>`;
+  }
+
+  // Fila de un resultado de búsqueda (sobre todo el catálogo)
+  function searchRowHtml(it){
+    const price = priceText(it);
+    const action = it.state === 'comprar'
+      ? stepperHtml(it)
+      : `<button class="pill-btn" data-action="pedir" data-id="${it.id}">+ Pedir</button>`;
+    return `<div class="item-row" data-id="${it.id}">
+      <div class="item-info" data-action="edit" data-id="${it.id}">
+        <div class="item-name">${escapeHtml(it.name)} <span class="badge ${it.state}">${VIEW_LABELS[it.state] || ''}</span></div>
+        <div class="item-meta">${escapeHtml(metaText(it, { withState:true }))}</div>
+        ${price ? `<div class="item-price">${escapeHtml(price)}</div>` : ''}
+      </div>
+      ${action}
+    </div>`;
+  }
+
+  function updateTotalBar(comprar){
+    if (currentView !== 'comprar' || searchQuery.trim()){ els.totalBar.style.display = 'none'; return; }
+    els.totalBar.style.display = comprar.length ? 'flex' : 'none';
+    let total = 0, missing = 0, units = 0;
+    comprar.forEach(it => {
+      const q = Number(it.qty) || 1;
+      units += q;
+      if (typeof it.lastPrice === 'number') total += it.lastPrice * q;
+      else missing++;
+    });
+    els.totalBar.innerHTML = `
+      <div>
+        <div class="label">Total estimado · ${formatQty(units)} unidades</div>
+        ${missing > 0 ? `<div class="note">${missing} producto(s) sin precio</div>` : ''}
+      </div>
+      <div class="amount">${formatMoney(total)}</div>`;
+  }
+
+  function render(){
+    const comprar = currentItems.filter(i => i.state === 'comprar');
+    const ultima = currentItems.filter(i => i.state === 'ultima');
+    const casa = currentItems.filter(i => i.state === 'casa');
+
+    els.tabComprar.innerHTML = `<span class="n">${comprar.length}</span>Para comprar`;
+    els.tabUltima.innerHTML = `<span class="n">${ultima.length}</span>Últ. compra`;
+    els.tabCasa.innerHTML = `<span class="n">${casa.length}</span>Lista Gral`;
+    updateTotalBar(comprar);
+
+    const q = normName(searchQuery);
+    els.searchClear.classList.toggle('hidden', !searchQuery);
+    els.tabsRow.classList.toggle('hidden', !!q);
+    if (q){ renderSearch(q); return; }
+
+    if (currentItems.length === 0){
+      els.main.innerHTML = `<div class="empty-state"><span class="mark">🧺</span>El catálogo está vacío.<br>Escribí arriba el primer producto para agregarlo.</div>`;
+      return;
+    }
+
+    const list = { comprar, ultima, casa }[currentView];
+    if (list.length === 0){
+      const msgs = {
+        comprar: ['✅', 'No hay nada pendiente.<br>Buscá un producto arriba o tocá + en «Lista Gral».'],
+        ultima: ['🛒', 'Todavía no marcaste nada como comprado en este viaje.'],
+        casa: ['🏠', 'No hay productos en la lista general.']
+      }[currentView];
+      els.main.innerHTML = `<div class="empty-state"><span class="mark">${msgs[0]}</span>${msgs[1]}</div>`;
+      return;
+    }
+
+    const groups = {};
+    list.forEach(it => { const c = it.category || 'Otros'; (groups[c] = groups[c] || []).push(it); });
+
+    let html = '';
+    if (currentView === 'ultima'){
+      html += `<button class="bulk-move-btn" data-action="bulk-move">✓ Ya guardé todo: pasar a Lista Gral (${ultima.length})</button>`;
+    }
+    Object.keys(groups).sort((a,b) => a.localeCompare(b, 'es')).forEach(cat => {
+      html += `<div class="cat-group"><div class="cat-title">${escapeHtml(cat)} · ${groups[cat].length}</div><div class="card">`;
+      groups[cat].sort((a,b) => a.name.localeCompare(b.name, 'es')).forEach(it => { html += itemRowHtml(it); });
+      html += `</div></div>`;
+    });
+    els.main.innerHTML = html;
+  }
+
+  function renderSearch(q){
+    const raw = searchQuery.trim();
+    const words = q.split(' ');
+    const scored = currentItems.map(it => {
+      const n = normName(it.name);
+      let score = 0;
+      if (n === q) score = 100;
+      else if (n.startsWith(q)) score = 80;
+      else if (n.includes(q)) score = 60;
+      else if (words.every(w => n.includes(w))) score = 40;
+      return { it, score };
+    }).filter(x => x.score > 0)
+      .sort((a,b) => b.score - a.score || a.it.name.localeCompare(b.it.name, 'es'));
+    const exact = scored.find(x => x.score === 100);
+
+    const cat = addCategory || guessCategory(raw);
+    const addCard = (title) => `<div class="card add-card">
+        <div class="title">${title}</div>
+        <div class="hint">Elegí la categoría y agregalo:</div>
+        <div class="chips" style="margin-bottom:14px;">
+          ${CATEGORIES.map(c => `<button class="chip${c === cat ? ' active' : ''}" data-action="add-cat" data-cat="${c}">${c}</button>`).join('')}
+        </div>
+        <div class="stack">
+          <button class="btn btn-primary btn-block" data-action="add-new" data-mode="comprar">➕ Agregar «${escapeHtml(raw)}» y pedir</button>
+          <button class="btn btn-ghost btn-block" data-action="add-new" data-mode="casa">Solo agregar a Lista Gral</button>
+        </div>
+      </div>`;
+    const results = scored.length
+      ? `<div class="results-title">En el catálogo (${scored.length})</div><div class="card" style="margin-bottom:16px;">${scored.map(x => searchRowHtml(x.it)).join('')}</div>`
+      : '';
+
+    let html = '';
+    if (exact){
+      html += `<div class="exists-note">✓ «${escapeHtml(exact.it.name)}» ya está en el catálogo, en ${VIEW_LABELS[exact.it.state]}.</div>` + results;
+    } else if (scored.length){
+      // Hay parecidos: primero los mostramos, y agregar queda como segunda opción
+      html += results + addCard(`¿No es ninguno de estos? Agregá <b>«${escapeHtml(raw)}»</b>`);
+    } else {
+      html += addCard(`<b>«${escapeHtml(raw)}»</b> no está en el catálogo`);
+    }
+    els.main.innerHTML = html;
+  }
+
+  // ---------- Acciones ----------
+  function setState(it, next){
+    const now = new Date().toISOString();
+    it.state = next;
+    touch(it);
+    if (next === 'comprar'){
+      it.requestedBy = who();
+      it.requestedAt = now;
+      it.qty = 1;
+    } else if (next === 'ultima'){
+      it.lastPurchasedAt = now;
+      it.lastQty = Number(it.qty) || 1;
+    }
+  }
+
+  const STATE_CYCLE = { comprar: 'ultima', ultima: 'casa', casa: 'comprar' };
+  function toggleItem(id){
+    const it = currentItems.find(i => i.id === id);
+    if (!it) return;
+    const next = STATE_CYCLE[it.state] || 'comprar';
+    setState(it, next);
+    render(); saveItems();
+    if (next === 'ultima') showToast(`«${it.name}» comprado ✓`, 1600);
+    if (next === 'comprar') showToast(`«${it.name}» agregado a Para comprar`, 1600);
+  }
+
+  function pedir(id){
+    const it = currentItems.find(i => i.id === id);
+    if (!it || it.state === 'comprar') return;
+    setState(it, 'comprar');
+    render(); saveItems();
+    showToast(`«${it.name}» agregado a Para comprar ✓`);
+  }
+
+  function changeQty(id, delta){
+    const it = currentItems.find(i => i.id === id);
+    if (!it) return;
+    const q = Math.max(1, Math.round((Number(it.qty) || 1) + delta));
+    if (q === it.qty) return;
+    it.qty = q; touch(it);
+    render(); saveItems();
+  }
+
+  function addNew(mode){
+    const name = searchQuery.trim().replace(/\s+/g, ' ');
+    if (!name) return;
+    const existing = findByName(name);
+    if (existing){ showToast(`«${existing.name}» ya existe en ${VIEW_LABELS[existing.state]}`); return; }
+    const now = new Date().toISOString();
+    const it = {
+      id: newId(), name: name.charAt(0).toUpperCase() + name.slice(1),
+      category: addCategory || guessCategory(name),
+      state: 'casa', qty: 1, addedBy: who(), addedAt: now
+    };
+    if (mode === 'comprar') setState(it, 'comprar'); else touch(it);
+    currentItems.unshift(it);
+    clearSearch();
+    if (mode === 'comprar') activateTab('comprar');
+    render(); saveItems();
+    showToast(mode === 'comprar' ? `«${it.name}» agregado y pedido ✓` : `«${it.name}» agregado a Lista Gral ✓`);
+  }
+
+  async function moveAllUltimaToCasa(){
+    const toMove = currentItems.filter(i => i.state === 'ultima');
+    if (toMove.length === 0) return;
+    const names = toMove.map(i => i.name).slice(0, 6).join(', ') + (toMove.length > 6 ? '…' : '');
+    if (!(await askConfirm(names, 'Pasar a Lista Gral', `¿Pasar estos ${toMove.length} productos a Lista Gral?`))) return;
+    toMove.forEach(it => { it.state = 'casa'; touch(it); });
+    render(); saveItems();
+    showToast(`${toMove.length} productos pasados a Lista Gral ✓`);
+  }
+
+  els.main.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const id = el.dataset.id;
+    switch (el.dataset.action){
+      case 'toggle': toggleItem(id); break;
+      case 'pedir': pedir(id); break;
+      case 'qty-inc': changeQty(id, +1); break;
+      case 'qty-dec': changeQty(id, -1); break;
+      case 'edit': openEditModal(id); break;
+      case 'bulk-move': moveAllUltimaToCasa(); break;
+      case 'add-cat': addCategory = el.dataset.cat; render(); break;
+      case 'add-new': addNew(el.dataset.mode); break;
+    }
+  });
+
+  // ---------- Búsqueda ----------
+  function clearSearch(){
+    searchQuery = ''; els.searchInput.value = ''; addCategory = null;
+  }
+  els.searchInput.addEventListener('input', () => {
+    const prevKey = normName(searchQuery);
+    searchQuery = els.searchInput.value;
+    if (normName(searchQuery) !== prevKey) addCategory = null;
+    render();
+  });
+  els.searchInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    let existing = findByName(searchQuery);
+    if (!existing){
+      const q = normName(searchQuery);
+      const partial = currentItems.filter(i => normName(i.name).includes(q));
+      if (partial.length === 0){ addNew('comprar'); return; }
+      if (partial.length > 1){ showToast('Hay varios parecidos: tocá «+ Pedir» en el que corresponda, o «Agregar».', 3200); return; }
+      existing = partial[0];
+    }
+    if (existing.state !== 'comprar'){ pedir(existing.id); }
+    else showToast(`«${existing.name}» ya está en Para comprar (x${formatQty(existing.qty)})`);
+    clearSearch(); render();
+  });
+  els.searchClear.addEventListener('click', () => { clearSearch(); render(); els.searchInput.focus(); });
+
+  function activateTab(view){
+    currentView = view;
+    [els.tabComprar, els.tabUltima, els.tabCasa].forEach(t => t.classList.toggle('active', t.dataset.view === view));
+    render();
+  }
+  [els.tabComprar, els.tabUltima, els.tabCasa].forEach(t => t.addEventListener('click', () => activateTab(t.dataset.view)));
+
+  // ---------- Modal: editar producto ----------
+  let editingId = null, editCat = null;
+  function renderEditCats(){
+    $('editCats').innerHTML = CATEGORIES.map(c =>
+      `<button class="chip${c === editCat ? ' active' : ''}" data-cat="${c}">${c}</button>`).join('');
+  }
+  $('editCats').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip'); if (!chip) return;
+    editCat = chip.dataset.cat; renderEditCats();
+  });
+  function openEditModal(id){
+    const it = currentItems.find(i => i.id === id);
+    if (!it) return;
+    editingId = id; editCat = it.category || 'Otros';
+    $('editName').value = it.name;
+    $('editPrice').value = typeof it.lastPrice === 'number' ? it.lastPrice : '';
+    renderEditCats();
+    const hist = (it.priceHistory || []).slice(-5).reverse();
+    const last = lastPurchaseISO(it);
+    $('editHistory').innerHTML =
+      (last ? `<div><span>Última compra</span><b>${formatDate(last)}${it.lastQty ? ' · x' + formatQty(it.lastQty) : ''}</b></div>` : '') +
+      hist.map(h => `<div><span>${formatDate(h.date)}${h.qty ? ' · x' + formatQty(h.qty) : ''}</span><b>${formatMoney(h.price)}</b></div>`).join('');
+    $('editModal').classList.remove('hidden');
+  }
+  $('editSaveBtn').addEventListener('click', () => {
+    const it = currentItems.find(i => i.id === editingId);
+    if (!it) return;
+    const name = $('editName').value.trim().replace(/\s+/g, ' ');
+    if (!name){ showToast('El nombre no puede quedar vacío'); return; }
+    const dup = findByName(name, it.id);
+    if (dup){ showToast(`Ya existe «${dup.name}». No se puede duplicar.`); return; }
+    it.name = name;
+    it.category = editCat;
+    const priceStr = $('editPrice').value.trim();
+    if (priceStr !== ''){
+      const p = parseFloat(priceStr);
+      if (!isNaN(p) && p !== it.lastPrice){
+        const now = new Date().toISOString();
+        it.lastPrice = p; it.lastPriceDate = now;
+        it.priceHistory = (it.priceHistory || []).concat([{ date: now, price: p }]).slice(-12);
+      }
+    }
+    touch(it);
+    $('editModal').classList.add('hidden');
+    render(); saveItems();
+    showToast('Cambios guardados ✓');
+  });
+  $('editDeleteBtn').addEventListener('click', async () => {
+    const it = currentItems.find(i => i.id === editingId);
+    if (!it) return;
+    if (!(await askConfirm('Se borra del catálogo en los dos celulares.', 'Eliminar', `¿Eliminar «${it.name}»?`))) return;
+    currentItems = currentItems.filter(i => i.id !== it.id);
+    deletedIds = deletedIds.concat([{ id: it.id, at: new Date().toISOString() }]);
+    $('editModal').classList.add('hidden');
+    render(); saveItems();
+    showToast(`«${it.name}» eliminado`);
+  });
+
+  // ---------- IMPORTAR PRECIOS DE TICKET ----------
+  // Formato espaciado: 12 SERENISIMA LECHE... $ 2919.00 $ 35028.00
+  const TICKET_LINE_RE = /^(-?\d+(?:[.,]\d+)?)\s+(.+?)\s+\$\s*([\d.,]+)(?:\s*\/\s*[a-záéíóú]+)?\s+\$?\s*-?[\d.,]*\s*$/i;
+  const TICKET_SKIP_RE = /descuento|^total|subtotal|efectivo|^cambio|^cajero|cantidad de|nro comprobante|^fecha|^cliente|^documento|^direccion|precio\s+importe|articulo|^-+$/i;
+
+  function parseMoney(str){
+    let s = String(str).replace(/[^\d.,]/g, '');
+    if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.'); // 1.985,00
+    else if (s.includes(',')) s = s.replace(',', '.');                                   // 1985,00
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');                     // 1.985
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
+  }
+  function parseQty(str){
+    const n = parseFloat(String(str).replace(',', '.'));
+    return isNaN(n) || n <= 0 ? 1 : n;
+  }
+
+  function extractTicketDate(text){
+    const m = text.match(/FECHA:?\s*(\d{2})\/(\d{2})\/(\d{2,4})/i);
+    if (!m) return new Date().toISOString();
+    const y = m[3].length === 2 ? '20' + m[3] : m[3];
+    const d = new Date(`${y}-${m[2]}-${m[1]}T12:00:00`);
+    return isNaN(d) ? new Date().toISOString() : d.toISOString();
+  }
+
+  // Formato con barras: 3 | PEDRIN PAPAS FRITAS X70GR | $ 1.985,00 | $ 5.955,00
+  function parseTicketLinePipe(line){
+    const parts = line.split('|').map(p => p.trim());
+    if (parts.length < 3) return null;
+    const qtyStr = parts[0].replace(',', '.');
+    if (!/^-?\d+(\.\d+)?$/.test(qtyStr)) return null;
+    const description = parts[1];
+    if (!description) return null;
+    const unitPrice = parseMoney(parts[2].replace(/\/\s*[a-záéíóú]+$/i, ''));
+    if (unitPrice === null) return null;
+    return { description, unitPrice, qty: parseQty(qtyStr) };
+  }
+  function parseTicketLineSpaced(line){
+    const m = line.match(TICKET_LINE_RE);
+    if (!m) return null;
+    const description = m[2].trim();
+    const unitPrice = parseMoney(m[3]);
+    if (!description || unitPrice === null) return null;
+    return { description, unitPrice, qty: parseQty(m[1]) };
+  }
+  function parseTicketText(text){
+    const parsed = [];
+    for (const raw of text.split('\n')){
+      const line = raw.trim();
+      if (!line || TICKET_SKIP_RE.test(line)) continue;
+      const r = line.includes('|') ? parseTicketLinePipe(line) : parseTicketLineSpaced(line);
+      if (r && r.qty > 0) parsed.push(r);
+    }
+    return parsed;
+  }
+
+  function normalizeWords(s){
+    return normName(s).split(' ').filter(w => w.length > 2 && isNaN(Number(w)));
+  }
+  function bestCatalogMatch(description){
+    // 1) si ya asociamos esta línea de ticket a un producto antes, usamos esa
+    const key = normName(description);
+    const byAlias = currentItems.find(it => (it.ticketAliases || []).includes(key));
+    if (byAlias) return { item: byAlias, sure: true };
+    // 2) si no, por palabras en común
+    const descWords = new Set(normalizeWords(description));
+    let best = null, bestScore = 0;
+    currentItems.forEach(it => {
+      const nameWords = normalizeWords(it.name);
+      if (nameWords.length === 0) return;
+      const score = nameWords.filter(w => descWords.has(w)).length / nameWords.length;
+      if (score > bestScore){ bestScore = score; best = it; }
+    });
+    return bestScore >= 0.5 ? { item: best, sure: false } : null;
+  }
+  function suggestNewName(description){
+    const words = description.split(/\s+/).filter(w => !/^\d+$/.test(w) && !/^x?\d+(gr|g|kg|ml|cc|l|lt|un)?$/i.test(w));
+    const s = words.slice(0, 3).join(' ').toLowerCase();
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  // Lectura de PDF (texto ya reconocido, ej. Adobe Scan) con pdf.js, cargado solo si hace falta
+  function loadScript(src){
+    return new Promise((res, rej) => {
+      const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  async function pdfToText(file){
+    if (!window.pdfjsLib){
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const out = [];
+    for (let p = 1; p <= pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      // agrupamos los fragmentos por renglón (misma altura) y los ordenamos de izquierda a derecha
+      const rows = [];
+      tc.items.forEach(t => {
+        if (!t.str || !t.str.trim()) return;
+        const y = t.transform[5], x = t.transform[4];
+        let row = rows.find(r => Math.abs(r.y - y) < 3);
+        if (!row){ row = { y, parts: [] }; rows.push(row); }
+        row.parts.push({ x, s: t.str.trim() });
+      });
+      rows.sort((a,b) => b.y - a.y).forEach(r => {
+        out.push(r.parts.sort((a,b) => a.x - b.x).map(p => p.s).join(' '));
+      });
+    }
+    return out.join('\n');
+  }
+
+  let priceReviewData = [];
+  let ticketDateISO = null;
+
+  function openPriceModal(){
+    $('priceRawText').value = '';
+    $('priceFile').value = '';
+    $('priceStepPaste').classList.remove('hidden');
+    $('priceStepReview').classList.add('hidden');
+    $('priceModal').classList.remove('hidden');
+  }
+
+  $('priceFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try{
+      showToast('Leyendo el ticket…', 1500);
+      const isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
+      const text = isPdf ? await pdfToText(file) : await file.text();
+      $('priceRawText').value = text;
+      if (!text.trim()){ showToast('El PDF no tiene texto reconocido. Pasalo por Adobe Scan (OCR) o pegá el texto.', 5000); return; }
+      analyzeTicket();
+    }catch(err){
+      console.error(err);
+      showToast('No pude leer el archivo. Probá pegando el texto.', 4000);
+    }
+  });
+
+  function analyzeTicket(){
+    const text = $('priceRawText').value;
+    if (!text.trim()){ showToast("Subí o pegá el ticket primero"); return; }
+    ticketDateISO = extractTicketDate(text);
+    const parsed = parseTicketText(text);
+    if (parsed.length === 0){ showToast("No reconocí ninguna línea de producto. Revisá el texto.", 3500); return; }
+    priceReviewData = parsed.map(p => {
+      const m = bestCatalogMatch(p.description);
+      return { ...p, matchId: m ? m.item.id : '__new__', sure: !!(m && m.sure), newName: suggestNewName(p.description), include: true };
+    });
+    const matched = priceReviewData.filter(r => r.matchId !== '__new__').length;
+    $('priceReviewIntro').textContent =
+      `Ticket del ${formatDate(ticketDateISO)}: ${priceReviewData.length} líneas, ${matched} asociadas a tu catálogo.` + (matched < priceReviewData.length ? ' Revisá las que dicen «Crear producto nuevo».' : ' Revisá y guardá.');
+    renderPriceReview();
+    $('priceStepPaste').classList.add('hidden');
+    $('priceStepReview').classList.remove('hidden');
+  }
+
+  function renderPriceReview(){
+    const catalogOptions = currentItems.slice().sort((a,b) => a.name.localeCompare(b.name,'es'))
+      .map(it => `<option value="${it.id}">${escapeHtml(it.name)}</option>`).join('');
+    const list = $('priceReviewList');
+    list.innerHTML = priceReviewData.map((row, idx) => `
+      <div class="price-review-row" data-idx="${idx}">
+        <div class="row-inline" style="align-items:center; margin-bottom:6px;">
+          <input type="checkbox" class="row-include" ${row.include ? 'checked' : ''} aria-label="Incluir">
+          <div class="orig">${escapeHtml(row.description)}</div>
+        </div>
+        ${row.sure ? '<span class="matched">✓ asociado como la vez anterior</span>' : ''}
+        <label class="field-label">Producto del catálogo</label>
+        <select class="field row-match">
+          <option value="__new__">➕ Crear producto nuevo</option>
+          ${catalogOptions}
+        </select>
+        <div class="row-new-name-wrap" style="${row.matchId === '__new__' ? '' : 'display:none;'}">
+          <label class="field-label">Nombre del producto nuevo</label>
+          <input type="text" class="field row-new-name" value="${escapeHtml(row.newName)}">
+        </div>
+        <div class="row-inline">
+          <div><label class="field-label">Cantidad</label><input type="number" inputmode="decimal" class="field row-qty" value="${row.qty}" step="any"></div>
+          <div><label class="field-label">Precio unitario</label><input type="number" inputmode="decimal" class="field row-price" value="${row.unitPrice}" step="0.01"></div>
+        </div>
+      </div>`).join('');
+    list.querySelectorAll('.price-review-row').forEach(rowEl => {
+      const data = priceReviewData[Number(rowEl.dataset.idx)];
+      const sel = rowEl.querySelector('.row-match');
+      sel.value = data.matchId;
+      sel.addEventListener('change', () => {
+        rowEl.querySelector('.row-new-name-wrap').style.display = sel.value === '__new__' ? '' : 'none';
+      });
+      rowEl.querySelector('.row-include').addEventListener('change', (e) => rowEl.classList.toggle('off', !e.target.checked));
+    });
+  }
+
+  function collectPriceReview(){
+    const result = [];
+    document.querySelectorAll('#priceReviewList .price-review-row').forEach(rowEl => {
+      if (!rowEl.querySelector('.row-include').checked) return;
+      const idx = Number(rowEl.dataset.idx);
+      const price = parseFloat(rowEl.querySelector('.row-price').value);
+      if (isNaN(price)) return;
+      result.push({
+        matchId: rowEl.querySelector('.row-match').value,
+        price,
+        qty: parseQty(rowEl.querySelector('.row-qty').value),
+        newName: rowEl.querySelector('.row-new-name').value.trim(),
+        description: priceReviewData[idx].description
+      });
+    });
+    return result;
+  }
+
+  function applyPriceUpdates(){
+    const rows = collectPriceReview();
+    if (rows.length === 0){ showToast("No hay filas seleccionadas para guardar"); return; }
+    const date = ticketDateISO || new Date().toISOString();
+    let created = 0, updated = 0;
+
+    rows.forEach(row => {
+      let it = null;
+      if (row.matchId === '__new__'){
+        if (!row.newName) return;
+        it = findByName(row.newName);   // si ya existe con ese nombre, se actualiza en vez de duplicar
+        if (!it){
+          it = { id: newId(), name: row.newName, category: guessCategory(row.newName), state: 'casa', qty: 1,
+                 addedBy: who(), addedAt: date, priceHistory: [] };
+          currentItems.unshift(it);
+          created++;
+        } else updated++;
+      } else {
+        it = currentItems.find(i => i.id === row.matchId);
+        if (!it) return;
+        updated++;
+      }
+      // Solo actualizamos si el ticket no es más viejo que el último precio registrado
+      const isNewer = !it.lastPriceDate || new Date(date) >= new Date(it.lastPriceDate);
+      if (isNewer){
+        it.lastPrice = row.price;
+        it.lastPriceDate = date;
+        it.lastQty = row.qty;
+      }
+      it.priceHistory = (it.priceHistory || []).concat([{ date, price: row.price, qty: row.qty }])
+        .sort((a,b) => new Date(a.date) - new Date(b.date)).slice(-12);
+      const alias = normName(row.description);
+      it.ticketAliases = Array.from(new Set([alias].concat(it.ticketAliases || []))).slice(0, 10);
+      touch(it);
+    });
+
+    $('priceModal').classList.add('hidden');
+    render(); saveItems();
+    showToast(`Precios guardados: ${updated} actualizados, ${created} nuevos ✓`, 3000);
+  }
+
+  $('priceAnalyzeBtn').addEventListener('click', analyzeTicket);
+  $('priceBackBtn').addEventListener('click', () => {
+    $('priceStepReview').classList.add('hidden');
+    $('priceStepPaste').classList.remove('hidden');
+  });
+  $('priceSaveBtn').addEventListener('click', applyPriceUpdates);
+
+  // ---------- Menú, modales y demás ----------
+  document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => $(b.dataset.close).classList.add('hidden')));
+  document.querySelectorAll('.modal-overlay').forEach(ov => ov.addEventListener('click', (e) => { if (e.target === ov) ov.classList.add('hidden'); }));
+
+  els.refreshBtn.addEventListener('click', async () => {
+    els.refreshBtn.style.transition = 'transform 0.5s ease';
+    els.refreshBtn.style.transform = 'rotate(360deg)';
+    if (pendingSave || els.syncStrip.classList.contains('error')) await saveItems(); else await loadItems();
+    setTimeout(() => { els.refreshBtn.style.transition = 'none'; els.refreshBtn.style.transform = 'rotate(0deg)'; }, 500);
+  });
+
+  els.menuBtn.addEventListener('click', () => {
+    $('menuShareBtn').classList.toggle('hidden', role !== 'owner');
+    $('menuModal').classList.remove('hidden');
+  });
+  $('menuPriceBtn').addEventListener('click', () => { $('menuModal').classList.add('hidden'); openPriceModal(); });
+  $('menuLogoutBtn').addEventListener('click', async () => {
+    $('menuModal').classList.add('hidden');
+    if (DEMO){ showToast('En el modo demo no hay sesión que cerrar'); return; }
+    if (await askConfirm('Vas a tener que volver a iniciar sesión con Microsoft.', 'Cerrar sesión', '¿Cerrar sesión en este dispositivo?')){
+      store.clearMine();
+      msalInstance.logoutPopup().catch(()=>location.reload());
+    }
+  });
+  $('menuShareBtn').addEventListener('click', () => {
+    $('menuModal').classList.add('hidden');
+    $('shareModalEmail').value = '';
+    $('shareModalForm').classList.remove('hidden');
+    $('shareModalIntro').classList.remove('hidden');
+    $('shareModalResult').classList.add('hidden');
+    $('shareModal').classList.remove('hidden');
+  });
+  $('shareModalBtn').addEventListener('click', async () => {
+    const email = $('shareModalEmail').value.trim();
+    if (!email){ showToast("Ingresá un email"); return; }
+    const btn = $('shareModalBtn');
+    btn.disabled = true; btn.textContent = "Compartiendo…";
+    try{
+      const res = await inviteEmail(email, ownerItemId);
+      if (res.ok){
+        const link = await createShareLink(ownerItemId);
+        $('shareModalForm').classList.add('hidden');
+        $('shareModalIntro').classList.add('hidden');
+        const resultEl = $('shareModalResult');
+        const closeBtn = `<button class="btn btn-ghost btn-block" id="shareResultCloseBtn" style="margin-top:10px;">Cerrar</button>`;
+        if (link){
+          resultEl.innerHTML = shareLinkResultHtml(link) + closeBtn;
+          $('copyLinkBtn').onclick = async () => {
+            const ok = await copyToClipboard(link);
+            showToast(ok ? "Link copiado ✓" : "No se pudo copiar, seleccionalo a mano");
+          };
+        } else {
+          resultEl.innerHTML = `<p>Se compartió con ${escapeHtml(email)}, pero no pudimos generar el link. Buscá el mail de invitación que le llegó.</p>` + closeBtn;
+        }
+        $('shareResultCloseBtn').onclick = () => $('shareModal').classList.add('hidden');
+        resultEl.classList.remove('hidden');
+      } else {
+        showToast("No se pudo compartir. Revisá el mail.");
+      }
+    }catch(e){
+      showToast("Error al compartir");
+    }finally{
+      btn.disabled = false; btn.textContent = "Compartir acceso";
+    }
+  });
+
+  if ('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+
+  // Para pruebas automáticas (no afecta el uso normal)
+  window.__lista = { parseTicketText, extractTicketDate, guessCategory, normName };
+
+  init();
+})();
+</script>
+</body>
+</html>

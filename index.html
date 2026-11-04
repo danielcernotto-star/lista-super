@@ -22,6 +22,22 @@
     VERSION: "3.0",
     RELEASE_DATE: "04/11/2026"
   };
+
+  // ---------- ENTORNOS ----------
+  // · Producción: la app normal, con la lista real.
+  // · Prueba (carpeta /beta/ o ?prueba): misma cuenta Microsoft, pero usa OTRO
+  //   archivo (ListaSuperFamiliar-Prueba/lista-prueba.json). Nunca toca la lista real.
+  // · Demo (?demo o DEMO:true): sin Microsoft, con datos de ejemplo guardados en el navegador.
+  (function(){
+    const C = window.APP_CONFIG;
+    const q = new URLSearchParams(location.search);
+    C.ENV = (C.DEMO || q.has('demo')) ? 'demo'
+          : (/\/beta\//.test(location.pathname) || q.has('prueba')) ? 'prueba'
+          : 'prod';
+    C.STORAGE_PREFIX = C.ENV === 'prod' ? 'ls_' : C.ENV === 'prueba' ? 'lsbeta_' : 'lsdemo_';
+    C.REAL_FOLDER = C.FOLDER_NAME; C.REAL_FILE = C.FILE_NAME;
+    if (C.ENV === 'prueba'){ C.FOLDER_NAME = 'ListaSuperFamiliar-Prueba'; C.FILE_NAME = 'lista-prueba.json'; }
+  })();
 </script>
 <!-- =========================================================== -->
 
@@ -306,12 +322,23 @@
     font-size:0.9rem; font-weight:700; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,0.25);
     animation:fadein 0.2s ease;
   }
+  .env-banner{
+    background:#C2410C; color:#FFFFFF; font-weight:700; font-size:0.85rem;
+    padding:calc(8px + var(--safe-top)) 16px 8px; text-align:center;
+    display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
+  }
+  .env-banner + #app header{padding-top:12px;}
+  .env-banner button{
+    background:rgba(255,255,255,0.18); color:#fff; border:1px solid rgba(255,255,255,0.5);
+    border-radius:999px; padding:6px 12px; font-weight:700; font-size:0.8rem; cursor:pointer;
+  }
   .hidden{display:none !important;}
   .spinner{width:22px; height:22px; border-radius:50%; border:3px solid var(--line); border-top-color:var(--accent); animation:spin 0.7s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
+<div class="env-banner hidden" id="envBanner"></div>
 <div id="app">
 
   <header>
@@ -420,6 +447,18 @@
   </div>
 </div>
 
+<!-- Modal: confirmación -->
+<div class="modal-overlay hidden" id="confirmModal">
+  <div class="modal-box">
+    <h3 id="confirmTitle">¿Seguro?</h3>
+    <p class="intro" id="confirmText" style="white-space:pre-line;"></p>
+    <div class="stack">
+      <button class="btn btn-primary btn-block" id="confirmOk">Aceptar</button>
+      <button class="btn btn-ghost btn-block" id="confirmCancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: compartir -->
 <div class="modal-overlay hidden" id="shareModal">
   <div class="modal-box">
@@ -478,13 +517,89 @@
     },
     cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
   };
-  const msalInstance = new msal.PublicClientApplication(msalConfig);
+  const DEMO = CFG.ENV === 'demo';
+  const msalInstance = DEMO ? null : new msal.PublicClientApplication(msalConfig);
   const SCOPES = ["User.Read", "Files.ReadWrite"];
 
+  // localStorage con prefijo por entorno: prueba y demo nunca leen ni pisan
+  // la configuración de la app real (rol, archivo compartido, etc.).
+  const store = {
+    get(k){ try{ return localStorage.getItem(CFG.STORAGE_PREFIX + k); }catch(e){ return null; } },
+    set(k, v){ try{ localStorage.setItem(CFG.STORAGE_PREFIX + k, v); }catch(e){} },
+    clearMine(){
+      try{ Object.keys(localStorage).filter(k => k.startsWith(CFG.STORAGE_PREFIX)).forEach(k => localStorage.removeItem(k)); }catch(e){}
+    }
+  };
+
   let account = null;
-  let role = localStorage.getItem('ls_role'); // 'owner' | 'guest' | null
-  let guestDriveId = localStorage.getItem('ls_guestDriveId');
-  let guestItemId = localStorage.getItem('ls_guestItemId');
+  let role = store.get('role'); // 'owner' | 'guest' | null
+  let guestDriveId = store.get('guestDriveId');
+  let guestItemId = store.get('guestItemId');
+
+  // ---------- DEMO: un "OneDrive" falso dentro del navegador ----------
+  function demoSeed(){
+    const d = (days) => new Date(Date.now() - days * 86400000).toISOString();
+    const mk = (name, category, state, extra) => Object.assign({
+      id: newId(), name, category, state, qty: 1, addedBy: 'Daniel', addedAt: d(40), updatedAt: d(10)
+    }, extra || {});
+    return { deleted: [], items: [
+      mk('Leche entera', 'Lácteos', 'comprar', { qty: 2, requestedBy: 'Mari Negri', lastPrice: 1650, lastPriceDate: d(9), lastPurchasedAt: d(9), lastQty: 2,
+        priceHistory: [{ date: d(40), price: 1490, qty: 2 }, { date: d(23), price: 1580, qty: 3 }, { date: d(9), price: 1650, qty: 2 }],
+        ticketAliases: ['serenisima leche entera 1l'] }),
+      mk('Yerba Playadito', 'Almacén', 'comprar', { requestedBy: 'Daniel', lastPrice: 4500, lastPriceDate: d(9), lastQty: 1, ticketAliases: ['yerba playadito 1kg'] }),
+      mk('Lavandina', 'Limpieza', 'comprar', { requestedBy: 'Mari Negri' }),
+      mk('Tomate perita', 'Verdulería', 'comprar', { qty: 3, requestedBy: 'Mari Negri', lastPrice: 2200, lastPriceDate: d(16) }),
+      mk('Papas fritas Pedrin', 'Almacén', 'ultima', { lastPurchasedAt: d(1), lastQty: 3, lastPrice: 1985, lastPriceDate: d(1), ticketAliases: ['pedrin papas fritas x70gr'] }),
+      mk('Pan lactal', 'Panadería', 'ultima', { lastPurchasedAt: d(1), lastQty: 1, lastPrice: 2900, lastPriceDate: d(1) }),
+      mk('Arroz largo fino', 'Almacén', 'casa', { lastPrice: 1350, lastPriceDate: d(23) }),
+      mk('Fideos tirabuzón', 'Almacén', 'casa', { lastPrice: 1100, lastPriceDate: d(23) }),
+      mk('Aceite de girasol', 'Almacén', 'casa'),
+      mk('Queso cremoso', 'Lácteos', 'casa', { lastPrice: 8900, lastPriceDate: d(30) }),
+      mk('Yogur bebible', 'Lácteos', 'casa'),
+      mk('Pechuga de pollo', 'Carnicería', 'casa', { lastPrice: 6500, lastPriceDate: d(16) }),
+      mk('Detergente', 'Limpieza', 'casa'),
+      mk('Papel higiénico', 'Perfumería', 'casa', { lastPrice: 5200, lastPriceDate: d(30) }),
+      mk('Banana', 'Verdulería', 'casa'),
+      mk('Agua mineral', 'Bebidas', 'casa', { lastPrice: 1200, lastPriceDate: d(9) }),
+    ]};
+  }
+  let demoMemory = null;
+  function demoLoad(){
+    if (demoMemory) return demoMemory;
+    try{ const s = localStorage.getItem('lsdemo_data'); if (s) return (demoMemory = JSON.parse(s)); }catch(e){}
+    return (demoMemory = demoSeed());
+  }
+  function demoGraph(path, opts){
+    const json = (obj) => new Response(JSON.stringify(obj), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if ((opts.method || 'GET') === 'PUT'){
+      demoMemory = JSON.parse(opts.body);
+      try{ localStorage.setItem('lsdemo_data', opts.body); }catch(e){}
+      return Promise.resolve(json({ id: 'demo' }));
+    }
+    if (path.endsWith('/content')) return Promise.resolve(json(JSON.parse(JSON.stringify(demoLoad()))));
+    return Promise.resolve(json({ id: 'demo' }));
+  }
+  function demoReset(){
+    demoMemory = demoSeed();
+    try{ localStorage.setItem('lsdemo_data', JSON.stringify(demoMemory)); }catch(e){}
+    loadItems();
+    showToast('Datos de ejemplo restaurados ✓');
+  }
+
+  // ---------- Confirmación propia (los confirm() del navegador no andan en todos lados) ----------
+  function askConfirm(text, okLabel, title){
+    return new Promise(resolve => {
+      document.getElementById('confirmTitle').textContent = title || '¿Seguro?';
+      document.getElementById('confirmText').textContent = text;
+      const ok = document.getElementById('confirmOk'), cancel = document.getElementById('confirmCancel');
+      const modal = document.getElementById('confirmModal');
+      ok.textContent = okLabel || 'Aceptar';
+      const done = (v) => { modal.classList.add('hidden'); ok.onclick = cancel.onclick = null; resolve(v); };
+      ok.onclick = () => done(true);
+      cancel.onclick = () => done(false);
+      modal.classList.remove('hidden');
+    });
+  }
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -562,6 +677,7 @@
   }
 
   async function graph(path, opts = {}){
+    if (DEMO) return demoGraph(path, opts);
     const token = await getToken();
     return fetch(`https://graph.microsoft.com/v1.0${path}`, {
       ...opts,
@@ -570,7 +686,47 @@
   }
 
   // ---------- Init ----------
+  function renderEnvBanner(){
+    const b = $('envBanner');
+    if (CFG.ENV === 'prod') return;
+    if (CFG.ENV === 'demo'){
+      b.innerHTML = '🧪 MODO DEMO · datos de ejemplo, no toca tu lista real <button id="demoResetBtn">Reiniciar datos</button>';
+    } else {
+      b.innerHTML = '🧪 ENTORNO DE PRUEBA · usa la lista de prueba, no la real' +
+        (role === 'owner' ? ' <button id="copyRealBtn">Copiar lista real</button>' : '');
+    }
+    b.classList.remove('hidden');
+    const r = $('demoResetBtn'); if (r) r.onclick = async () => { if (await askConfirm('Se borran tus cambios de prueba y vuelven los datos de ejemplo.', 'Reiniciar')) demoReset(); };
+    const c = $('copyRealBtn'); if (c) c.onclick = copyRealIntoTest;
+  }
+
+  // Solo en PRUEBA: trae una copia de la lista real (solo lectura) al archivo de prueba.
+  async function copyRealIntoTest(){
+    if (!(await askConfirm('Se reemplaza la lista de PRUEBA con una copia de la lista real. La lista real no se modifica.', 'Copiar'))) return;
+    try{
+      const res = await graph(`/me/drive/root:/${CFG.REAL_FOLDER}/${CFG.REAL_FILE}:/content`);
+      if (!res.ok) throw new Error('No se pudo leer la lista real');
+      const data = await res.json();
+      const put = await graph(contentPath(), { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+      if (!put.ok) throw new Error('No se pudo escribir la lista de prueba');
+      await loadItems();
+      showToast(`Copiados ${(data.items || []).length} productos a la lista de prueba ✓`, 3000);
+    }catch(e){
+      console.error(e); showToast('No se pudo copiar: ' + e.message, 4000);
+    }
+  }
+
   async function init(){
+    if (DEMO){
+      account = { name: 'Daniel (demo)', username: 'demo' };
+      role = 'owner'; ownerItemId = 'demo';
+      renderEnvBanner();
+      els.whoBox.classList.remove('hidden');
+      els.avatarEl.textContent = 'D';
+      els.subLabel.textContent = 'Modo demo';
+      showApp(); startPolling();
+      return;
+    }
     await msalInstance.initialize();
     await msalInstance.handleRedirectPromise().catch(()=>null);
     const accounts = msalInstance.getAllAccounts();
@@ -604,6 +760,7 @@
     els.whoBox.classList.remove('hidden');
     els.avatarEl.textContent = (account.name || account.username || "?").trim()[0].toUpperCase();
     els.subLabel.textContent = account.name || account.username;
+    renderEnvBanner();
     if (!role){ renderRoleChoice(); return; }
     if (role === 'owner') await ensureOwnerFile();
     else await ensureGuestFile();
@@ -617,8 +774,8 @@
         <button class="btn btn-primary" id="ownerBtn">Soy quien creó la lista (dueño del archivo)</button>
         <button class="btn btn-ghost" id="guestBtn">Me compartieron la lista</button>
       </div>`;
-    $('ownerBtn').onclick = () => { role='owner'; localStorage.setItem('ls_role','owner'); ensureOwnerFile(); };
-    $('guestBtn').onclick = () => { role='guest'; localStorage.setItem('ls_role','guest'); ensureGuestFile(); };
+    $('ownerBtn').onclick = () => { role='owner'; store.set('role','owner'); renderEnvBanner(); ensureOwnerFile(); };
+    $('guestBtn').onclick = () => { role='guest'; store.set('role','guest'); renderEnvBanner(); ensureGuestFile(); };
   }
 
   function gateSpinner(title){
@@ -650,7 +807,7 @@
       showFatal("No pudimos crear el archivo en OneDrive. Revisá los permisos en el README.");
       return;
     }
-    if (!localStorage.getItem('ls_sharedDone')) renderShareStep();
+    if (!store.get('sharedDone')) renderShareStep();
     else { showApp(); startPolling(); }
   }
 
@@ -667,7 +824,7 @@
         </div>
       </div>`;
     $('shareBtn').onclick = doShare;
-    $('skipShare').onclick = () => { localStorage.setItem('ls_sharedDone','1'); showApp(); startPolling(); };
+    $('skipShare').onclick = () => { store.set('sharedDone','1'); showApp(); startPolling(); };
   }
 
   async function inviteEmail(email, itemId){
@@ -719,7 +876,7 @@
     try{
       const res = await inviteEmail(email, ownerItemId);
       if (res.ok){
-        localStorage.setItem('ls_sharedDone','1');
+        store.set('sharedDone','1');
         const link = await createShareLink(ownerItemId);
         if (link){
           els.gateTitle.textContent = "¡Compartido!";
@@ -756,8 +913,8 @@
     if (match){
       guestDriveId = match.remoteItem.parentReference.driveId;
       guestItemId = match.remoteItem.id;
-      localStorage.setItem('ls_guestDriveId', guestDriveId);
-      localStorage.setItem('ls_guestItemId', guestItemId);
+      store.set('guestDriveId', guestDriveId);
+      store.set('guestItemId', guestItemId);
       showApp(); startPolling();
     } else {
       renderManualLinkStep();
@@ -789,8 +946,8 @@
     const data = await res.json();
     guestDriveId = data.parentReference.driveId;
     guestItemId = data.id;
-    localStorage.setItem('ls_guestDriveId', guestDriveId);
-    localStorage.setItem('ls_guestItemId', guestItemId);
+    store.set('guestDriveId', guestDriveId);
+    store.set('guestItemId', guestItemId);
     showToast("Conectado ✓"); showApp(); startPolling();
   }
 
@@ -1168,11 +1325,11 @@
     showToast(mode === 'comprar' ? `«${it.name}» agregado y pedido ✓` : `«${it.name}» agregado a Lista Gral ✓`);
   }
 
-  function moveAllUltimaToCasa(){
+  async function moveAllUltimaToCasa(){
     const toMove = currentItems.filter(i => i.state === 'ultima');
     if (toMove.length === 0) return;
     const names = toMove.map(i => i.name).slice(0, 6).join(', ') + (toMove.length > 6 ? '…' : '');
-    if (!confirm(`¿Pasar estos ${toMove.length} productos a Lista Gral?\n\n${names}`)) return;
+    if (!(await askConfirm(names, 'Pasar a Lista Gral', `¿Pasar estos ${toMove.length} productos a Lista Gral?`))) return;
     toMove.forEach(it => { it.state = 'casa'; touch(it); });
     render(); saveItems();
     showToast(`${toMove.length} productos pasados a Lista Gral ✓`);
@@ -1276,10 +1433,10 @@
     render(); saveItems();
     showToast('Cambios guardados ✓');
   });
-  $('editDeleteBtn').addEventListener('click', () => {
+  $('editDeleteBtn').addEventListener('click', async () => {
     const it = currentItems.find(i => i.id === editingId);
     if (!it) return;
-    if (!confirm(`¿Eliminar «${it.name}» para siempre del catálogo?`)) return;
+    if (!(await askConfirm('Se borra del catálogo en los dos celulares.', 'Eliminar', `¿Eliminar «${it.name}»?`))) return;
     currentItems = currentItems.filter(i => i.id !== it.id);
     deletedIds = deletedIds.concat([{ id: it.id, at: new Date().toISOString() }]);
     $('editModal').classList.add('hidden');
@@ -1565,9 +1722,11 @@
     $('menuModal').classList.remove('hidden');
   });
   $('menuPriceBtn').addEventListener('click', () => { $('menuModal').classList.add('hidden'); openPriceModal(); });
-  $('menuLogoutBtn').addEventListener('click', () => {
-    if (confirm("¿Cerrar sesión en este dispositivo?")){
-      localStorage.clear();
+  $('menuLogoutBtn').addEventListener('click', async () => {
+    $('menuModal').classList.add('hidden');
+    if (DEMO){ showToast('En el modo demo no hay sesión que cerrar'); return; }
+    if (await askConfirm('Vas a tener que volver a iniciar sesión con Microsoft.', 'Cerrar sesión', '¿Cerrar sesión en este dispositivo?')){
+      store.clearMine();
       msalInstance.logoutPopup().catch(()=>location.reload());
     }
   });

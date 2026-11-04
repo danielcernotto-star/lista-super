@@ -2,7 +2,9 @@
 // - index.html se pide SIEMPRE primero a la red (así cada versión nueva subida
 //   a GitHub aparece al instante); si no hay señal, se usa la copia guardada.
 // - Los datos de la lista nunca pasan por caché: van en vivo a Microsoft Graph.
-const CACHE_NAME = 'lista-super-v3.0';
+// La carpeta /beta/ (entorno de prueba) usa su propia caché y no toca la de producción.
+const IS_BETA = self.registration.scope.includes('/beta/');
+const CACHE_NAME = (IS_BETA ? 'lista-super-beta-' : 'lista-super-') + 'v3.0';
 const SHELL_FILES = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -17,7 +19,9 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+    caches.keys().then((keys) => Promise.all(keys
+      .filter((k) => k !== CACHE_NAME && k.includes('-beta-') === IS_BETA)
+      .map((k) => caches.delete(k))))
   );
   self.clients.claim();
 });

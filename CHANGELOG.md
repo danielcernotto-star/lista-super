@@ -31,6 +31,15 @@
   sola la próxima vez.
 - Un ticket viejo no pisa un precio más nuevo (igual queda en el historial).
 
+**Entornos de prueba**
+- `?demo`: modo demo con datos de ejemplo, sin Microsoft, que no toca nada real.
+- Carpeta `/beta/` (o `?prueba`): la misma cuenta Microsoft, pero con otra
+  lista (`ListaSuperFamiliar-Prueba/lista-prueba.json`) y una configuración
+  aparte en el celular. Tiene un botón para copiar la lista real a la de
+  prueba, y la real nunca se modifica.
+- Las confirmaciones usan un cuadro propio de la app en lugar del `confirm()`
+  del navegador.
+
 **Técnico**
 - Cada cambio (categoría, precio, cantidad) marca `updatedAt`, así la mezcla
   entre los dos celulares no pierde cambios.

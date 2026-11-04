@@ -145,6 +145,19 @@ La app tiene **un solo cuadro arriba para buscar y agregar**, y tres listas:
 - **Sincronización**: al abrir la app, al volver a ella desde otra app y al
   tocar ⟳.
 
+## Probar una versión nueva antes de publicarla
+
+1. **Demo (sin login):** abrí la app con `?demo` al final de la dirección.
+   Usa datos de ejemplo guardados solo en ese navegador.
+2. **Prueba con OneDrive:** la versión nueva va en la carpeta `beta/` del
+   repo y se abre en `https://danielcernotto-star.github.io/lista-super/beta/`.
+   Usa otra lista (`ListaSuperFamiliar-Prueba`), así que la real queda intacta.
+   Antes, una sola vez: en portal.azure.com → la app → *Autenticación* →
+   agregá la URI de redirección SPA
+   `https://danielcernotto-star.github.io/lista-super/beta/`.
+3. Cuando todo funciona bien, se copian los archivos de `beta/` a la raíz
+   (con la ruta del ícono sin `../`) y se publica.
+
 ## Versiones
 
 El historial de cambios está en [CHANGELOG.md](CHANGELOG.md). La versión en
