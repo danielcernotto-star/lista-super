@@ -510,7 +510,7 @@
   // Nombre normalizado: sin mayúsculas, acentos, signos ni espacios repetidos.
   function normName(s){
     return String(s || '').toLowerCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, ' ').trim();
   }
   function findByName(name, exceptId){
