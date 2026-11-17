@@ -799,7 +799,7 @@
 
   // ---------- OWNER ----------
   let ownerItemId = null;
-  async function ensureOwnerFile(){
+  async function ensureOwnerFileRaw(){
     gateSpinner("Preparando tu lista…");
     let folderRes = await graph(`/me/drive/root:/${CFG.FOLDER_NAME}`);
     if (folderRes.status === 404){
@@ -813,6 +813,7 @@
       const createRes = await graph(`/me/drive/root:/${CFG.FOLDER_NAME}/${CFG.FILE_NAME}:/content`, {
         method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ items: [] })
       });
+      if (!createRes.ok) throw new Error('OneDrive respondió ' + createRes.status + ' al crear ' + CFG.FILE_NAME);
       ownerItemId = (await createRes.json()).id;
     } else if (fileRes.ok){
       ownerItemId = (await fileRes.json()).id;
@@ -916,7 +917,7 @@
   }
 
   // ---------- GUEST ----------
-  async function ensureGuestFile(){
+  async function ensureGuestFileRaw(){
     if (guestDriveId && guestItemId){ showApp(); startPolling(); return; }
     gateSpinner("Buscando la lista compartida…");
     const res = await graph(`/me/drive/sharedWithMe`);
@@ -963,6 +964,28 @@
     store.set('guestItemId', guestItemId);
     showToast("Conectado ✓"); showApp(); startPolling();
   }
+
+  // Si algo falla al preparar la lista, mostramos el motivo en vez de quedar "cargando" para siempre.
+  async function withRecovery(fn){
+    try{ await fn(); }
+    catch(e){
+      console.error(e);
+      const msg = String((e && (e.errorCode || e.message)) || e);
+      if (/interaction_required|popup|consent|login_required|monitor_window_timeout/i.test(msg)){
+        els.gateTitle.textContent = "Hay que confirmar la sesión";
+        els.gateText.textContent = "Microsoft pide que vuelvas a confirmar tu cuenta.";
+        els.gateActions.innerHTML = '<button class="btn btn-primary" id="reauthBtn">Continuar con Microsoft</button>';
+        $('reauthBtn').onclick = async () => {
+          try{ const r = await msalInstance.acquireTokenPopup({ scopes: SCOPES }); account = r.account; withRecovery(fn); }
+          catch(e2){ showFatal('No se pudo confirmar la sesión (' + (e2.errorCode || e2.message) + ').'); }
+        };
+      } else {
+        showFatal('No pudimos preparar la lista. Detalle: ' + msg);
+      }
+    }
+  }
+  function ensureOwnerFile(){ return withRecovery(ensureOwnerFileRaw); }
+  function ensureGuestFile(){ return withRecovery(ensureGuestFileRaw); }
 
   function showFatal(msg){
     els.gateTitle.textContent = "Algo salió mal";
