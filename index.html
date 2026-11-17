@@ -508,12 +508,25 @@
     return;
   }
 
+  // Abierta como archivo (doble clic en index.html): Microsoft no permite iniciar sesión desde ahí.
+  if (location.protocol === 'file:' && CFG.ENV !== 'demo'){
+    document.getElementById('gateTitle').textContent = "Así no se puede iniciar sesión";
+    document.getElementById('gateText').innerHTML = "Abriste la app como archivo de la computadora. Microsoft solo permite iniciar sesión desde la dirección publicada en GitHub Pages.<br><br>Para mirar la interfaz sin iniciar sesión, usá el modo demo:";
+    document.getElementById('gateActions').innerHTML = '<a class="btn btn-primary" href="?demo">Abrir modo demo</a>';
+    return;
+  }
+
   // ---------- MSAL ----------
   const msalConfig = {
     auth: {
       clientId: CFG.CLIENT_ID,
       authority: "https://login.microsoftonline.com/consumers",
-      redirectUri: window.location.origin + window.location.pathname
+      // En PRUEBA se ignora un "index.html" final, así funciona igual si se abre
+      // .../beta/ o .../beta/index.html (en Microsoft se registra .../beta/).
+      // En producción queda exactamente como antes, para no romper el login actual.
+      redirectUri: window.location.origin + (CFG.ENV === 'prueba'
+        ? window.location.pathname.replace(/index\.html$/, '')
+        : window.location.pathname)
     },
     cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true }
   };
