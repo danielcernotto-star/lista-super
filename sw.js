@@ -4,7 +4,7 @@
 // - Los datos de la lista nunca pasan por caché: van en vivo a Microsoft Graph.
 // La carpeta /beta/ (entorno de prueba) usa su propia caché y no toca la de producción.
 const IS_BETA = self.registration.scope.includes('/beta/');
-const CACHE_NAME = (IS_BETA ? 'lista-super-beta-' : 'lista-super-') + 'v3.0';
+const CACHE_NAME = (IS_BETA ? 'lista-super-beta-' : 'lista-super-') + 'v3.1';
 const SHELL_FILES = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

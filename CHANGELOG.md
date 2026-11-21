@@ -1,5 +1,13 @@
 # Historial de versiones
 
+## v3.1 — 21/11/2026
+- Se puede sacar un producto de «Para comprar» y devolverlo a «Lista Gral»:
+  con cantidad 1, el botón «−» pasa a ser 🗑. También está en ✎ → «Quitar
+  de Para comprar».
+- Aviso con botón «Deshacer» durante 5 segundos.
+- Si falla la preparación de la lista, se muestra el motivo (antes quedaba
+  cargando), con un botón para reconfirmar la sesión de Microsoft si hace falta.
+
 ## v3.0 — 04/11/2026
 **Lectura y diseño**
 - Tema nuevo, más suave y con más contraste: claro de día y oscuro de noche,

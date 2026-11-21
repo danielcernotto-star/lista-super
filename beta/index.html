@@ -19,8 +19,8 @@
     CLIENT_ID: "746f62ec-3d96-4603-8b89-2284ed4e9321",   // Application (client) ID de la app registrada en Entra
     FOLDER_NAME: "ListaSuperFamiliar",     // carpeta en OneDrive donde vive el archivo
     FILE_NAME: "lista.json",
-    VERSION: "3.0",
-    RELEASE_DATE: "04/11/2026"
+    VERSION: "3.1",
+    RELEASE_DATE: "21/11/2026"
   };
 
   // ---------- ENTORNOS ----------
@@ -321,7 +321,13 @@
     width:max-content; max-width:calc(100vw - 32px); text-align:center;
     font-size:0.9rem; font-weight:700; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,0.25);
     animation:fadein 0.2s ease;
+    display:flex; align-items:center; gap:14px;
   }
+  .toast button{
+    background:transparent; color:var(--bg); border:1.5px solid var(--bg); border-radius:999px;
+    padding:6px 12px; font-weight:700; font-size:0.85rem; cursor:pointer; flex-shrink:0;
+  }
+  .stepper button.remove{font-size:1rem; color:var(--danger);}
   .env-banner{
     background:#C2410C; color:#FFFFFF; font-weight:700; font-size:0.85rem;
     padding:calc(8px + var(--safe-top)) 16px 8px; text-align:center;
@@ -399,6 +405,7 @@
     <div class="history" id="editHistory"></div>
     <div class="stack">
       <button class="btn btn-primary btn-block" id="editSaveBtn">Guardar cambios</button>
+      <button class="btn btn-ghost btn-block hidden" id="editUnlistBtn">↩ Quitar de Para comprar</button>
       <button class="btn btn-danger btn-block" id="editDeleteBtn">Eliminar del catálogo</button>
       <button class="btn btn-ghost btn-block" data-close="editModal">Cancelar</button>
     </div>
@@ -626,12 +633,18 @@
   };
   els.versionLabel.textContent = `v${CFG.VERSION} · ${CFG.RELEASE_DATE}`;
 
-  function showToast(msg, ms){
+  function showToast(msg, ms, action){
     document.querySelectorAll('.toast').forEach(t => t.remove());
     const t = document.createElement('div');
-    t.className = 'toast'; t.textContent = msg;
+    t.className = 'toast';
+    const span = document.createElement('span'); span.textContent = msg; t.appendChild(span);
+    if (action){
+      const b = document.createElement('button'); b.textContent = action.label;
+      b.onclick = () => { t.remove(); action.fn(); };
+      t.appendChild(b);
+    }
     document.body.appendChild(t);
-    setTimeout(()=>t.remove(), ms || 2400);
+    setTimeout(()=>t.remove(), ms || (action ? 5000 : 2400));
   }
 
   // ---------- Helpers ----------
@@ -1148,7 +1161,9 @@
   function stepperHtml(it){
     const q = Number(it.qty) || 1;
     return `<div class="stepper">
-      <button data-action="qty-dec" data-id="${it.id}" aria-label="Menos" ${q <= 1 ? 'disabled' : ''}>−</button>
+      ${q <= 1
+        ? `<button class="remove" data-action="remove" data-id="${it.id}" aria-label="Quitar de Para comprar" title="Quitar de Para comprar">🗑</button>`
+        : `<button data-action="qty-dec" data-id="${it.id}" aria-label="Menos">−</button>`}
       <span class="q">${formatQty(q)}</span>
       <button data-action="qty-inc" data-id="${it.id}" aria-label="Más">+</button>
     </div>`;
@@ -1204,7 +1219,7 @@
     });
     els.totalBar.innerHTML = `
       <div>
-        <div class="label">Total estimado · ${formatQty(units)} unidades</div>
+        <div class="label">Total estimado · ${formatQty(units)} ${units === 1 ? "unidad" : "unidades"}</div>
         ${missing > 0 ? `<div class="note">${missing} producto(s) sin precio</div>` : ''}
       </div>
       <div class="amount">${formatMoney(total)}</div>`;
@@ -1342,6 +1357,23 @@
     render(); saveItems();
   }
 
+  // Saca un producto de «Para comprar» y lo devuelve a «Lista Gral» (con opción de deshacer).
+  function removeFromList(id){
+    const it = currentItems.find(i => i.id === id);
+    if (!it || it.state !== 'comprar') return;
+    const before = { state: it.state, qty: it.qty, requestedBy: it.requestedBy, requestedAt: it.requestedAt };
+    it.state = 'casa'; it.qty = 1;
+    delete it.requestedBy; delete it.requestedAt;
+    touch(it);
+    render(); saveItems();
+    showToast(`«${it.name}» volvió a Lista Gral`, 5000, { label: 'Deshacer', fn: () => {
+      const cur = currentItems.find(i => i.id === id);
+      if (!cur) return;
+      Object.assign(cur, before); touch(cur);
+      render(); saveItems();
+    }});
+  }
+
   function addNew(mode){
     const name = searchQuery.trim().replace(/\s+/g, ' ');
     if (!name) return;
@@ -1380,6 +1412,7 @@
       case 'pedir': pedir(id); break;
       case 'qty-inc': changeQty(id, +1); break;
       case 'qty-dec': changeQty(id, -1); break;
+      case 'remove': removeFromList(id); break;
       case 'edit': openEditModal(id); break;
       case 'bulk-move': moveAllUltimaToCasa(); break;
       case 'add-cat': addCategory = el.dataset.cat; render(); break;
@@ -1444,8 +1477,13 @@
     $('editHistory').innerHTML =
       (last ? `<div><span>Última compra</span><b>${formatDate(last)}${it.lastQty ? ' · x' + formatQty(it.lastQty) : ''}</b></div>` : '') +
       hist.map(h => `<div><span>${formatDate(h.date)}${h.qty ? ' · x' + formatQty(h.qty) : ''}</span><b>${formatMoney(h.price)}</b></div>`).join('');
+    $('editUnlistBtn').classList.toggle('hidden', it.state !== 'comprar');
     $('editModal').classList.remove('hidden');
   }
+  $('editUnlistBtn').addEventListener('click', () => {
+    $('editModal').classList.add('hidden');
+    removeFromList(editingId);
+  });
   $('editSaveBtn').addEventListener('click', () => {
     const it = currentItems.find(i => i.id === editingId);
     if (!it) return;
