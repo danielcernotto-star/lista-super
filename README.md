@@ -117,16 +117,53 @@ Desde ahí queda como cualquier otra app, con ícono propio.
 
 ---
 
-## Cómo se usa día a día
+## Cómo se usa día a día (v3)
 
-- **Agregar algo**: escribir en el cuadro de abajo, elegir una categoría
-  (opcional) y tocar el botón ＋ (o Enter).
-- **En el súper**: a medida que ponés algo en el carrito, tocá el círculo
-  para tildarlo. Se mueve a "Ya compraron" abajo, tachado.
-- **Terminaste de comprar**: tocá "Vaciar" en la sección "Ya compraron"
-  para dejar la lista limpia para la próxima.
-- **Se sincroniza sola**: cada vez que abrís la app, o cada 20 segundos
-  mientras está abierta, revisa si el otro agregó o tildó algo.
+La app tiene **un solo cuadro arriba para buscar y agregar**, y tres listas:
+**Para comprar**, **Últ. compra** (lo que ya pusiste en el carrito) y
+**Lista Gral** (todo el catálogo de productos de la casa).
+
+- **¿Está o no está?** Escribí en el cuadro de arriba. Busca en *todo* el
+  catálogo, sin importar la lista, y muestra en cuál está cada producto.
+- **Pedir algo**: si aparece, tocá **+ Pedir**. Si no existe, elegí la
+  categoría y tocá **Agregar y pedir**. Enter hace lo mismo.
+  No se pueden crear repetidos ("Leche", "leche " y "léche" son el mismo).
+- **Cantidades**: en *Para comprar* cada producto tiene − 1 +.
+  El total estimado multiplica cantidad × último precio.
+- **En el súper**: tocá el cuadrado ✓ cuando lo ponés en el carrito: pasa a
+  *Últ. compra* y queda guardada la fecha y la cantidad comprada.
+- **Al llegar a casa**: en *Últ. compra* tocá "Ya guardé todo" para devolver
+  todo a *Lista Gral*.
+- **Editar / borrar / precio a mano**: tocá ✎ en cualquier producto.
+- **Actualizar precios con el ticket**: menú ⋮ → *Actualizar precios con un
+  ticket*. Subí el PDF (por ejemplo de Adobe Scan) o pegá el texto. La app
+  asocia cada línea a un producto y **recuerda la asociación** para la
+  próxima vez. Guarda precio unitario, cantidad y fecha del ticket. No cambia
+  en qué lista está cada producto.
+- **Colores**: claro de día y oscuro de noche, según la configuración del
+  celular.
+- **Sincronización**: al abrir la app, al volver a ella desde otra app y al
+  tocar ⟳.
+
+## Probar una versión nueva antes de publicarla
+
+1. **Demo (sin login):** abrí la app con `?demo` al final de la dirección.
+   Usa datos de ejemplo guardados solo en ese navegador.
+2. **Prueba con OneDrive:** la versión nueva va en la carpeta `beta/` del
+   repo y se abre en `https://danielcernotto-star.github.io/lista-super/beta/`.
+   Usa otra lista (`ListaSuperFamiliar-Prueba`), así que la real queda intacta.
+   Antes, una sola vez: en portal.azure.com → la app → *Autenticación* →
+   agregá la URI de redirección SPA
+   `https://danielcernotto-star.github.io/lista-super/beta/`.
+3. Cuando todo funciona bien, se copian los archivos de `beta/` a la raíz
+   (con la ruta del ícono sin `../`) y se publica.
+
+## Versiones
+
+El historial de cambios está en [CHANGELOG.md](CHANGELOG.md). La versión en
+uso se ve debajo del título de la app. Para actualizar, subí los archivos
+nuevos a GitHub. Los celulares toman la versión nueva la próxima vez que
+abren la app con conexión.
 
 ## Preguntas frecuentes
 
@@ -142,7 +179,7 @@ los combina en vez de pisar uno con otro.
 
 **¿Puedo agregar más categorías o cambiar los colores?**
 Sí — están en `index.html`: la lista `CATEGORIES` cerca del principio del
-`<script>`, y los colores en la sección `:root{...}` del `<style>`. Si
+`<script>`, y los colores en `:root{...}` (tema claro) y en `@media (prefers-color-scheme: dark)` (tema oscuro) del `<style>`. Si
 querés, pedime que te ayude a modificarlas.
 
 **¿Puede sumarse un tercer integrante?**
